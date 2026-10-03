@@ -1,0 +1,24 @@
+{
+    "quests": [
+        {
+            "id": "keeper_trust",
+            "title": "The gatekeeper's trust",
+            "description": "Mara guards the last safe entrance to the keep. Earn her trust before entering.",
+            "require": ["met_mara"],
+            "objectives": [
+                {"id": "open_gate", "text": "Convince Mara to open the gate.", "require": ["keep_gate_open"]}
+            ]
+        },
+        {
+            "id": "rescue_keep",
+            "title": "Bring them home",
+            "description": "Free the villagers and break the goblins' hold on the keep.",
+            "require": ["accepted_rescue"],
+            "fail": ["abandoned_rescue"],
+            "objectives": [
+                {"id": "prisoners", "text": "Lead the prisoners to safety.", "require": ["prisoners_safe"]},
+                {"id": "chief", "text": "Defeat the goblin chief.", "require": ["chief_defeated"]}
+            ]
+        }
+    ]
+}

@@ -9,6 +9,7 @@
 #include "TestSceneInput.h"
 #include "TestSceneImages.h"
 #include "TestSceneDialogue.h"
+#include "TestSceneQuests.h"
 #include "TestSceneShapes.h"
 #include "TestSceneSpriteStress.h"
 #include "TestSceneTileMap.h"
@@ -38,6 +39,7 @@ int main(int argc, char** argv)
     browser.add<TestSceneTools>("F7 Tools + text");
     browser.add<TestSceneImages>("F8 Images");
     browser.add<TestSceneDialogue>("F9 Dialogue");
+    browser.add<TestSceneQuests>("F10 Quests");
 
     yh::HostSettings settings;
     settings.title = "yorehold-framework tests";
