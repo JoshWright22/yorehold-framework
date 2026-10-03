@@ -1,0 +1,35 @@
+{
+    "id": "keep_gatekeeper",
+    "start": "greeting",
+    "nodes": [
+        {
+            "id": "greeting",
+            "speaker": "Mara, the gatekeeper",
+            "text": "The keep is barred for the night. Goblins are inside, and I cannot risk letting another stranger through.",
+            "set": ["met_mara"],
+            "choices": [
+                {"id": "rumor", "text": "Tell me about the goblins.", "next": "greeting", "set": ["heard_rumor"], "forbid": ["heard_rumor"]},
+                {"id": "help", "text": "We know what is inside. We will help.", "next": "welcome", "require": ["heard_rumor"]},
+                {"id": "persuade", "text": "Trust us. We can handle this. [Persuasion DC 12]",
+                    "check": {"skill": "persuasion", "difficulty": 12, "success": "welcome", "failure": "refusal"}},
+                {"id": "leave", "text": "We will return in the morning.", "next": ""}
+            ]
+        },
+        {
+            "id": "welcome",
+            "speaker": "Mara, the gatekeeper",
+            "text": "Then take this key. Bring the people of the keep home safely. I will remember your kindness.",
+            "set": ["keep_gate_open", "accepted_rescue"]
+        },
+        {
+            "id": "refusal",
+            "speaker": "Mara, the gatekeeper",
+            "text": "Brave words alone will not open this gate. Listen first, and show me you understand the danger.",
+            "set": ["mara_refused"],
+            "choices": [
+                {"id": "listen", "text": "Then tell us what happened.", "next": "greeting", "set": ["heard_rumor"]},
+                {"id": "leave", "text": "Good night, Mara.", "next": ""}
+            ]
+        }
+    ]
+}

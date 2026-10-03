@@ -1,5 +1,6 @@
 #include "Checks.h"
 #include "ImageTests.h"
+#include "DialogueTests.h"
 
 #include <yorehold/framework/animation/SpriteSheet.h>
 #include <yorehold/framework/animation/Tween.h>
@@ -888,6 +889,7 @@ int main()
 {
     const std::pair<const char*, void(*)()> tests[] = {
         {"Images", regression::images},
+        {"Dialogue", regression::dialogues},
         {"Tweens", tweens},
         {"Particles", particles},
         {"Visibility/fog", visibilityAndFog},

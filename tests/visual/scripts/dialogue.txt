@@ -1,0 +1,12 @@
+3 shot .dev/dialogue-greeting.png
+8 key 1
+9 keyup 1
+12 shot .dev/dialogue-rumor.png
+18 key 1
+19 keyup 1
+22 shot .dev/dialogue-open.png
+28 key R
+29 keyup R
+34 key 2
+35 keyup 2
+40 shot .dev/dialogue-check.png

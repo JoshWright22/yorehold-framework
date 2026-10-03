@@ -142,6 +142,7 @@ add_library(yorehold-framework
     src/rpg/CharacterJson.cpp
     src/rpg/Combat.cpp
     src/rpg/Dice.cpp
+    src/rpg/Dialogue.cpp
     src/rpg/Ruleset.cpp
     src/rpg/RulesetJson.cpp
     src/rpg/Stats.cpp
@@ -195,6 +196,7 @@ if(YOREHOLD_FRAMEWORK_UNIT_TESTS AND NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQ
     add_executable(yorehold-framework-unit-tests
         tests/unit/main.cpp
         tests/unit/ImageTests.cpp
+        tests/unit/DialogueTests.cpp
     )
     target_link_libraries(yorehold-framework-unit-tests PRIVATE yorehold::framework webp)
     target_include_directories(yorehold-framework-unit-tests PRIVATE ${stb_dir})
