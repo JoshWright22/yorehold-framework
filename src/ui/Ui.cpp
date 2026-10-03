@@ -20,7 +20,7 @@ std::optional<UiTheme> UiTheme::fromJson(std::string_view json, std::string* err
         const std::pair<const char*, Color*> fields[] = {{"panel", &theme.panel}, {"panelBorder", &theme.panelBorder},
             {"button", &theme.button}, {"buttonHover", &theme.buttonHover}, {"buttonPressed", &theme.buttonPressed},
             {"buttonDisabled", &theme.buttonDisabled}, {"text", &theme.text}, {"textDim", &theme.textDim},
-            {"accent", &theme.accent}, {"good", &theme.good}, {"bad", &theme.bad}};
+            {"accent", &theme.accent}, {"good", &theme.good}, {"bad", &theme.bad}, {"shadowColor", &theme.shadowColor}};
         for (const auto& [name, color] : fields)
         {
             if (!j.contains(name)) continue;
@@ -28,6 +28,11 @@ std::optional<UiTheme> UiTheme::fromJson(std::string_view json, std::string* err
             if (values.size() != 4) throw std::invalid_argument("Theme colours need [r,g,b,a]");
             for (int v : values) if (v < 0 || v > 255) throw std::invalid_argument("Theme colour outside 0..255");
             *color = {static_cast<uint8_t>(values[0]), static_cast<uint8_t>(values[1]), static_cast<uint8_t>(values[2]), static_cast<uint8_t>(values[3])};
+        }
+        for (const auto& [name, value] : {std::pair<const char*, float*>{"border", &theme.border}, {"bevel", &theme.bevel}, {"shadow", &theme.shadow}})
+        {
+            *value = j.value(name, *value);
+            if (!std::isfinite(*value) || *value < 0 || *value > 16) throw std::invalid_argument("Theme frame sizes must be 0..16");
         }
         theme.textScale = j.value("textScale", theme.textScale);
         if (!std::isfinite(theme.textScale) || theme.textScale <= 0 || theme.textScale > 8) throw std::invalid_argument("Invalid theme text scale");
@@ -50,10 +55,33 @@ bool Ui::hovered(const Rect& area) const
     return input_ && input_->mouseInside() && clipState_.clip.contains(input_->mouse()) && area.contains(mousePosition());
 }
 
+static Color shade(Color c, int amount)
+{
+    auto channel = [&](uint8_t v) { return static_cast<uint8_t>(std::clamp(v + amount, 0, 255)); };
+    return {channel(c.r), channel(c.g), channel(c.b), c.a};
+}
+
+void Ui::frame(const Rect& area, Color fill, Color outline, bool sunken)
+{
+    if (theme.shadow > 0)
+        renderer_->fillRect({area.x + theme.shadow, area.y + theme.shadow, area.w, area.h}, theme.shadowColor);
+    renderer_->fillRect(area, fill);
+    if (theme.bevel > 0)
+    {
+        const float b = theme.border, v = theme.bevel;
+        const Rect inner{area.x + b, area.y + b, area.w - 2 * b, area.h - 2 * b};
+        const Color light = shade(fill, sunken ? -28 : 34), dark = shade(fill, sunken ? 34 : -28);
+        renderer_->fillRect({inner.x, inner.y, inner.w, v}, light);
+        renderer_->fillRect({inner.x, inner.y + v, v, inner.h - v}, light);
+        renderer_->fillRect({inner.x, inner.y + inner.h - v, inner.w, v}, dark);
+        renderer_->fillRect({inner.x + inner.w - v, inner.y, v, inner.h - v}, dark);
+    }
+    renderer_->drawRect(area, outline, theme.border);
+}
+
 void Ui::panel(const Rect& area)
 {
-    renderer_->fillRect(area, theme.panel);
-    renderer_->drawRect(area, theme.panelBorder);
+    frame(area, theme.panel, theme.panelBorder);
 }
 
 void Ui::label(Vec2 position, std::string_view text)
@@ -76,13 +104,15 @@ bool Ui::button(const Rect& area, std::string_view text, bool enabled)
                      : over && input_->buttonDown(MouseButton::Left) ? theme.buttonPressed
                      : over ? theme.buttonHover
                             : theme.button;
-    renderer_->fillRect(area, fill);
-    renderer_->drawRect(area, theme.panelBorder);
+    const bool pressed = over && input_->buttonDown(MouseButton::Left);
+    frame(area, fill, theme.panelBorder, pressed);
 
     const Color color = enabled ? theme.text : theme.textDim;
     if (theme.font)
     {
-        theme.font->drawCentered(*renderer_, area, text, color);
+        // Pressed buttons sink with their bevel.
+        const float sink = pressed ? std::min(theme.bevel, 2.0f) : 0;
+        theme.font->drawCentered(*renderer_, {area.x + sink, area.y + sink, area.w, area.h}, text, color);
     }
     else
     {
@@ -286,7 +316,7 @@ bool Ui::toggle(const Rect& area, std::string_view text, bool on)
 {
     const bool clicked = button(area, text);
     if (on)
-        renderer_->drawRect(area, theme.accent, 2);
+        renderer_->drawRect(area, theme.accent, std::max(2.0f, theme.border));
     return clicked;
 }
 
@@ -294,7 +324,9 @@ void Ui::bar(const Rect& area, float fraction, Color fill)
 {
     renderer_->fillRect(area, theme.buttonDisabled);
     renderer_->fillRect({area.x, area.y, area.w * std::clamp(fraction, 0.0f, 1.0f), area.h}, fill);
-    renderer_->drawRect(area, theme.panelBorder);
+    if (theme.bevel > 0 && fraction > 0) // a highlight strip keeps chunky bars from looking flat
+        renderer_->fillRect({area.x, area.y, area.w * std::clamp(fraction, 0.0f, 1.0f), std::max(1.0f, area.h * 0.3f)}, shade(fill, 40));
+    renderer_->drawRect(area, theme.panelBorder, std::min(theme.border, std::max(1.0f, area.h / 4)));
 }
 
 void Ui::log(const Rect& area, const std::vector<std::string>& lines)
@@ -348,11 +380,12 @@ void Ui::logWithFont(const Rect& area, const std::vector<std::string>& lines)
 {
     Font& font = *theme.font;
     const float line = font.lineHeight() + 2;
-    const size_t fits = static_cast<size_t>(std::max(0.0f, (area.h - 12) / line));
+    const float pad = 6 + theme.border + theme.bevel;
+    const size_t fits = static_cast<size_t>(std::max(0.0f, (area.h - 2 * pad) / line));
     std::vector<std::pair<std::string, bool>> wrapped; // newest first
     for (size_t i = lines.size(); i-- > 0 && wrapped.size() < fits;)
     {
-        std::vector<std::string> parts = font.wrap(lines[i], area.w - 20);
+        std::vector<std::string> parts = font.wrap(lines[i], area.w - 2 * pad - 4);
         for (size_t p = parts.size(); p-- > 0;)
             wrapped.push_back({p == 0 ? parts[p] : "  " + parts[p], i + 1 == lines.size()});
     }
@@ -361,7 +394,7 @@ void Ui::logWithFont(const Rect& area, const std::vector<std::string>& lines)
     for (size_t k = 0; k < shown; k++)
     {
         const auto& [text, newest] = wrapped[shown - 1 - k];
-        font.draw(*renderer_, {8, 6 + k * line}, text, newest ? theme.text : theme.textDim);
+        font.draw(*renderer_, {pad, pad + k * line}, text, newest ? theme.text : theme.textDim);
     }
     renderer_->pop();
 }

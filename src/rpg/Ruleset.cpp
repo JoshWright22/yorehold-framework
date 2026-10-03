@@ -93,6 +93,26 @@ const ConditionDefinition* Ruleset::condition(std::string_view wanted) const
     return nullptr;
 }
 
+const RestDefinition* Ruleset::rest(std::string_view wanted) const
+{
+    for (const RestDefinition& r : rests)
+    {
+        if (r.id == wanted)
+            return &r;
+    }
+    return nullptr;
+}
+
+int Ruleset::hitDie(std::string_view characterClass) const
+{
+    for (const auto& [name, sides] : hitDieByClass)
+    {
+        if (name == characterClass)
+            return sides;
+    }
+    return defaultHitDie;
+}
+
 Ruleset Ruleset::classic()
 {
     Ruleset r;
@@ -103,6 +123,11 @@ Ruleset Ruleset::classic()
     r.modifierTable = ModifierTable::Classic;
     r.scoreMax = 18;
     r.xpForLevel = {1500, 3500, 7500, 15000, 30000, 60000, 110000, 220000, 330000}; // placeholder curve, tune later
+    // Old-school: slow natural healing, one hit die per rest, nobody gets back up by themselves.
+    r.rests = {{"rest", "Rest", {Recovery::Kind::HitDice, 0.5f, 1, false}, 0}};
+    r.hitDieAbility.clear();
+    r.hitDieByClass = {{"Fighter", 8}, {"Cleric", 6}, {"Thief", 4}, {"Magic-user", 4}};
+    r.defaultHitDie = 6;
     return r;
 }
 
@@ -122,6 +147,13 @@ Ruleset Ruleset::modern()
     r.modifierTable = ModifierTable::D20;
     r.proficiencyByLevel = {2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6};
     r.xpForLevel = {250, 800, 2500, 6000, 13000, 22000, 33000, 46000, 62000}; // placeholder curve, tune later
+    // Short rests spend hit dice; a long rest heals everyone fully, even the downed.
+    r.rests = {
+        {"short", "Short rest", {Recovery::Kind::HitDice, 0.5f, 0, false}, 2},
+        {"long", "Long rest", {Recovery::Kind::Full, 1.0f, 0, true}, 1},
+    };
+    r.reviveAfterVictory = 1;
+    r.hitDieByClass = {{"Barbarian", 12}, {"Fighter", 10}, {"Cleric", 8}, {"Rogue", 8}, {"Wizard", 6}};
     return r;
 }
 

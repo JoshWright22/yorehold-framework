@@ -1,6 +1,7 @@
 #include "yorehold/framework/map/Tokens.h"
 
 #include "yorehold/framework/assets/Assets.h"
+#include "yorehold/framework/graphics/Font.h"
 #include "yorehold/framework/input/ControlScheme.h"
 #include "yorehold/framework/map/Pathfinding.h"
 
@@ -147,6 +148,7 @@ std::optional<Vec2> TokenController::leaderPosition() const
 void TokenController::update(const Input& input, const Camera& camera, const Grid& grid, const Passable& passable, double deltaSeconds)
 {
     contextChoice.reset();
+    lastMouse_ = input.mouse();
     if (contextMenuToken && input.buttonPressed(MouseButton::Left) && !menuArea_.contains(input.mouse())) contextMenuToken.reset();
     if (contextMenuToken && menuArea_.contains(input.mouse()))
     {
@@ -479,6 +481,11 @@ void TokenController::draw(Renderer& renderer, const Camera& camera, const Grid&
         renderer.drawSprite(disc_, {token.position.x - inner, token.position.y - inner, inner * 2, inner * 2}, token.color);
 
         const std::string initial = token.name.substr(0, 1);
+        if (initialFont)
+        {
+            initialFont->drawCentered(renderer, {token.position.x - r, token.position.y - r, r * 2, r * 2}, initial, {20, 20, 24, 255});
+            continue;
+        }
         const float scale = r / 8.0f;
         renderer.drawText({token.position.x - Renderer::textWidth(initial, scale) / 2, token.position.y - 4 * scale}, initial, {20, 20, 24, 255}, scale);
     }
@@ -515,14 +522,21 @@ void TokenController::drawOverlay(Renderer& renderer, const Camera& camera, cons
         renderer.drawRect(box_, selectionColor, 1.5f);
     }
 
+    auto text = [&](Vec2 at, std::string_view s, Color color) {
+        if (labelFont) labelFont->draw(renderer, at, s, color);
+        else renderer.drawText(at, s, color);
+    };
+    auto textWidth = [&](std::string_view s) { return labelFont ? labelFont->measure(s) : Renderer::textWidth(s); };
+    const float textHeight = labelFont ? labelFont->lineHeight() : Renderer::lineHeight();
+
     if (previewPath_.size() > 1)
     {
         const float squares = grid.distance(previewPath_.front(), previewPath_.back());
         char label[48];
         std::snprintf(label, sizeof(label), "%.0f sq (%.0f ft)", squares, squares * 5);
         const Vec2 at = camera.worldToScreen(grid.center(previewPath_.back())) + Vec2{18, -30};
-        renderer.fillRect({at.x - 6, at.y - 4, Renderer::textWidth(label) + 12, Renderer::lineHeight() + 6}, {0, 0, 0, 170});
-        renderer.drawText(at, label, {255, 255, 255, 255});
+        renderer.fillRect({at.x - 6, at.y - 4, textWidth(label) + 12, textHeight + 6}, {0, 0, 0, 190});
+        text(at, label, {255, 255, 255, 255});
     }
 
     if (contextMenuToken && *contextMenuToken < tokens.size())
@@ -530,11 +544,16 @@ void TokenController::drawOverlay(Renderer& renderer, const Camera& camera, cons
         const Token& token = tokens[*contextMenuToken];
         const Vec2 at = camera.worldToScreen(token.position) + Vec2{token.radius * camera.zoom() + 10, -20};
         menuArea_ = {at.x, at.y, 220, static_cast<float>(contextActions.size() + 1) * 22.0f + 12};
-        renderer.fillRect(menuArea_, {16, 16, 22, 235});
-        renderer.drawRect(menuArea_, {90, 90, 110, 255});
-        renderer.drawText({at.x + 10, at.y + 8}, token.name, selectionColor);
+        renderer.fillRect(menuArea_, {30, 28, 36, 240});
         for (size_t i = 0; i < contextActions.size(); ++i)
-            renderer.drawText({at.x + 10, at.y + 8 + static_cast<float>(i + 1) * 22.0f}, contextActions[i], {220, 220, 230, 255});
+        {
+            const Rect row{at.x + 3, at.y + 8 + static_cast<float>(i + 1) * 22.0f, menuArea_.w - 6, 22};
+            if (row.contains(lastMouse_))
+                renderer.fillRect(row, {80, 70, 100, 255});
+            text({at.x + 10, row.y}, contextActions[i], {230, 226, 214, 255});
+        }
+        renderer.drawRect(menuArea_, {8, 7, 10, 255}, 3);
+        text({at.x + 10, at.y + 6}, token.name, selectionColor);
     }
 }
 

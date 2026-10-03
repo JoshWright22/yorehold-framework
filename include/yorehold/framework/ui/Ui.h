@@ -27,6 +27,12 @@ struct UiTheme
     Color accent{255, 196, 64, 255};
     Color good{110, 200, 110, 255};
     Color bad{220, 90, 80, 255};
+    // Frame shape, in pixels: outline thickness, light/dark bevel inside it, and a drop shadow
+    // offset down-right. 1/0/0 is a thin flat look; ~3/2/4 gives a chunky blocky one.
+    float border = 1;
+    float bevel = 0;
+    float shadow = 0;
+    Color shadowColor{0, 0, 0, 140};
     float textScale = 2.0f; // debug-font scale, used when there's no font
     Font* font = nullptr;   // body text; set this for real text
     static std::optional<UiTheme> fromJson(std::string_view json, std::string* error = nullptr);
@@ -64,6 +70,8 @@ public:
     float lineHeight() const { return theme.font ? theme.font->lineHeight() + 6 : Renderer::lineHeight(theme.textScale) + 6; }
 
 private:
+    // Shadow, fill, bevel and outline in the theme's frame style.
+    void frame(const Rect& area, Color fill, Color outline, bool sunken = false);
     void logWithFont(const Rect& area, const std::vector<std::string>& lines);
     float textWidth(std::string_view text) const;
     size_t textIndexAt(std::string_view text, float x) const;

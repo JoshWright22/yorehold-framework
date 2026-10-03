@@ -1,6 +1,9 @@
 #include "yorehold/framework/rpg/Character.h"
 
+#include "yorehold/framework/rpg/Dice.h"
+
 #include <algorithm>
+#include <cmath>
 
 namespace yh
 {
@@ -121,6 +124,35 @@ bool Character::takeDamage(int amount)
 void Character::heal(int amount)
 {
     hp = std::min(maxHp(), hp + amount);
+}
+
+int Character::recover(const Ruleset& rules, const Recovery& recovery, Random& random, std::string* detail)
+{
+    if (detail) detail->clear();
+    if (down() && !recovery.reviveDowned)
+        return 0;
+    const int before = std::max(0, hp);
+    int amount = 0;
+    switch (recovery.kind)
+    {
+    case Recovery::Kind::None: return 0;
+    case Recovery::Kind::Full: amount = maxHp(); break;
+    case Recovery::Kind::Fraction: amount = static_cast<int>(std::ceil(maxHp() * recovery.fraction)); break;
+    case Recovery::Kind::Flat: amount = recovery.amount; break;
+    case Recovery::Kind::HitDice:
+    {
+        const int dice = recovery.amount > 0 ? recovery.amount : std::max(1, level);
+        const int bonus = rules.hitDieAbility.empty() ? 0 : abilityModifier(rules, rules.hitDieAbility) * dice;
+        const std::string expression = std::to_string(dice) + "d" + std::to_string(rules.hitDie(characterClass))
+            + (bonus < 0 ? "" : "+") + std::to_string(bonus);
+        const RollResult roll = yh::roll(expression, random);
+        if (detail) *detail = roll.describe();
+        amount = std::max(1, roll.total); // resting always helps a little
+        break;
+    }
+    }
+    hp = std::min(maxHp(), before + amount);
+    return hp - before;
 }
 
 bool Character::equip(size_t index)

@@ -14,6 +14,7 @@ namespace yh
 {
 
 class Assets;
+class Font;
 
 enum class TokenImageStyle
 {
@@ -84,6 +85,10 @@ public:
     // Looks token images up through `assets` (which must outlive the controller): portraits
     // as circle textures, cutouts as smooth textures.
     void useAssets(Assets& assets);
+    // Initials on image-less tokens, and the distance label + context menu; null uses the
+    // debug font. Must outlive draw calls.
+    Font* initialFont = nullptr;
+    Font* labelFont = nullptr;
 
     void update(const Input& input, const Camera& camera, const Grid& grid, const Passable& passable, double deltaSeconds);
     // Draws through the camera transform (call between camera.apply and renderer.pop).
@@ -119,6 +124,7 @@ private:
     std::vector<Vec2> dragStart_; // token positions when the drag began
     Rect box_;                    // screen space
     Rect menuArea_;
+    Vec2 lastMouse_; // screen space, for menu hover
 
     // Hover path preview, recomputed only when the hovered cell changes.
     std::optional<Cell> previewCell_;

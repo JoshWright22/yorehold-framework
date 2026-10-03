@@ -72,6 +72,7 @@ void Input::handle(const SDL_Event& event)
             ButtonState& button = buttons_[event.button.button];
             button = {true, true, false, false, {event.button.x, event.button.y}, event.button.clicks};
             mouse_ = button.pressedAt;
+            mouseInside_ = true;
         }
         break;
     case SDL_EVENT_MOUSE_BUTTON_UP:
@@ -84,6 +85,7 @@ void Input::handle(const SDL_Event& event)
             button.released = button.down;
             button.down = false;
             mouse_ = at;
+            mouseInside_ = true;
         }
         break;
     case SDL_EVENT_MOUSE_WHEEL:
@@ -139,7 +141,7 @@ void Input::handle(const SDL_Event& event)
         buttons_ = {};
         break;
     case SDL_EVENT_WINDOW_FOCUS_GAINED:
-        mouseInside_ = true;
+        // Keyboard focus does not tell us whether the pointer is inside the window.
         break;
     default:
         break;

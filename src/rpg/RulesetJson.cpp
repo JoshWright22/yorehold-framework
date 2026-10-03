@@ -10,6 +10,39 @@
 namespace yh
 {
 
+namespace
+{
+
+constexpr std::pair<Recovery::Kind, const char*> recoveryKinds[] = {
+    {Recovery::Kind::None, "none"}, {Recovery::Kind::Full, "full"}, {Recovery::Kind::Fraction, "fraction"},
+    {Recovery::Kind::Flat, "flat"}, {Recovery::Kind::HitDice, "hitDice"},
+};
+
+nlohmann::json recoveryToJson(const Recovery& r)
+{
+    const char* kind = "none";
+    for (const auto& [k, name] : recoveryKinds)
+        if (k == r.kind) kind = name;
+    return {{"kind", kind}, {"fraction", r.fraction}, {"amount", r.amount}, {"reviveDowned", r.reviveDowned}};
+}
+
+Recovery recoveryFromJson(const nlohmann::json& j)
+{
+    Recovery r;
+    const auto kind = j.value("kind", std::string("none"));
+    const auto found = std::find_if(std::begin(recoveryKinds), std::end(recoveryKinds), [&](const auto& k) { return kind == k.second; });
+    if (found == std::end(recoveryKinds)) throw std::invalid_argument("Unknown recovery kind");
+    r.kind = found->first;
+    r.fraction = j.value("fraction", r.fraction);
+    r.amount = j.value("amount", r.amount);
+    r.reviveDowned = j.value("reviveDowned", r.reviveDowned);
+    if (!std::isfinite(r.fraction) || r.fraction < 0 || r.fraction > 1 || r.amount < 0 || r.amount > 100000)
+        throw std::invalid_argument("Invalid recovery amount");
+    return r;
+}
+
+}
+
 std::string Ruleset::toJson() const
 {
     using J = nlohmann::json;
@@ -19,7 +52,15 @@ std::string Ruleset::toJson() const
         {"armorClassAbility", armorClassAbility}, {"initiativeAbility", initiativeAbility},
         {"proficiencyByLevel", proficiencyByLevel}, {"xpForLevel", xpForLevel},
         {"feetPerSquare", feetPerSquare}, {"carryPerStrength", carryPerStrength}};
-    j["abilities"] = J::array(); j["skills"] = J::array(); j["conditions"] = J::array();
+    j["abilities"] = J::array(); j["skills"] = J::array(); j["conditions"] = J::array(); j["rests"] = J::array();
+    for (const auto& r : rests)
+        j["rests"].push_back({{"id", r.id}, {"name", r.name}, {"perAdventure", r.perAdventure}, {"recovery", recoveryToJson(r.recovery)}});
+    j["afterVictory"] = recoveryToJson(afterVictory);
+    j["reviveAfterVictory"] = reviveAfterVictory;
+    j["defaultHitDie"] = defaultHitDie;
+    j["hitDieAbility"] = hitDieAbility;
+    j["hitDieByClass"] = J::object();
+    for (const auto& [name, sides] : hitDieByClass) j["hitDieByClass"][name] = sides;
     for (const auto& a : abilities) j["abilities"].push_back({{"id", a.id}, {"name", a.name}});
     for (const auto& s : skills) j["skills"].push_back({{"id", s.id}, {"name", s.name}, {"ability", s.ability}});
     for (const auto& c : conditions)
@@ -97,6 +138,26 @@ std::optional<Ruleset> Ruleset::fromJson(std::string_view json, std::string* err
             }
             r.conditions.push_back(std::move(def));
         }
+        ids.clear();
+        for (const auto& rest : j.value("rests", nlohmann::json::array()))
+        {
+            RestDefinition def{rest.at("id").get<std::string>(), rest.value("name", std::string{}),
+                recoveryFromJson(rest.value("recovery", nlohmann::json::object())), rest.value("perAdventure", 0)};
+            if (def.id.empty() || !ids.insert(def.id).second || def.perAdventure < 0) throw std::invalid_argument("Invalid rest definition");
+            r.rests.push_back(std::move(def));
+        }
+        r.afterVictory = recoveryFromJson(j.value("afterVictory", nlohmann::json::object()));
+        r.reviveAfterVictory = j.value("reviveAfterVictory", 0);
+        r.defaultHitDie = j.value("defaultHitDie", r.defaultHitDie);
+        r.hitDieAbility = j.value("hitDieAbility", r.hitDieAbility);
+        const nlohmann::json dice = j.value("hitDieByClass", nlohmann::json::object());
+        if (!dice.is_object()) throw std::invalid_argument("hitDieByClass must be an object");
+        for (const auto& [name, sides] : dice.items())
+            r.hitDieByClass.emplace_back(name, sides.get<int>());
+        auto badDie = [](int sides) { return sides < 1 || sides > 1000; };
+        if (r.reviveAfterVictory < 0 || badDie(r.defaultHitDie) || (!r.hitDieAbility.empty() && !r.ability(r.hitDieAbility))
+            || std::any_of(r.hitDieByClass.begin(), r.hitDieByClass.end(), [&](const auto& c) { return badDie(c.second); }))
+            throw std::invalid_argument("Invalid healing rules");
         return r;
     }
     catch (const std::exception& e) { if (error) *error = e.what(); return std::nullopt; }

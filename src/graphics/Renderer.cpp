@@ -150,6 +150,11 @@ struct Renderer::Impl
     std::vector<uint32_t> indices;
     std::vector<DrawCommand> commands;
     std::vector<TransformState> states;
+    // A frame can flush several times (lighting, target clears, overlays). Keep
+    // earlier batches' geometry and target sizes intact while their draws run.
+    size_t uploadedVertices = 0;
+    size_t uploadedIndices = 0;
+    size_t uploadedPasses = 0;
 
     bool createDevice(SDL_Window* window);
     void createLayouts();
@@ -501,6 +506,9 @@ void Renderer::beginFrame(Color clearColor)
     r.vertices.clear();
     r.indices.clear();
     r.commands.clear();
+    r.uploadedVertices = 0;
+    r.uploadedIndices = 0;
+    r.uploadedPasses = 0;
     r.states.assign(1, TransformState{{}, 1.0f, {0, 0, static_cast<float>(r.width), static_cast<float>(r.height)}, windowTarget});
     r.clearColor = clearColor;
     r.firstPass = true;
@@ -533,8 +541,8 @@ void Renderer::Impl::ensureBuffers(size_t passes)
         desc.size = capacity;
         buffer = device.CreateBuffer(&desc);
     };
-    grow(vertexBuffer, vertexCapacity, vertices.size() * sizeof(Vertex), 64 * 1024, wgpu::BufferUsage::Vertex);
-    grow(indexBuffer, indexCapacity, indices.size() * sizeof(uint32_t), 32 * 1024, wgpu::BufferUsage::Index);
+    grow(vertexBuffer, vertexCapacity, (uploadedVertices + vertices.size()) * sizeof(Vertex), 64 * 1024, wgpu::BufferUsage::Vertex);
+    grow(indexBuffer, indexCapacity, (uploadedIndices + indices.size()) * sizeof(uint32_t), 32 * 1024, wgpu::BufferUsage::Index);
 
     if (passes > uniformSlots)
     {
@@ -581,11 +589,14 @@ void Renderer::flush()
     if (r.firstPass && (passes.empty() || passes.front().target != windowTarget))
         passes.insert(passes.begin(), {windowTarget, 0, 0}); // still clear the window
 
-    r.ensureBuffers(passes.size());
+    r.ensureBuffers(r.uploadedPasses + passes.size());
+    const size_t vertexOffset = r.uploadedVertices * sizeof(Vertex);
+    const size_t indexOffset = r.uploadedIndices * sizeof(uint32_t);
+    const size_t uniformOffset = r.uploadedPasses * uniformSlot;
     if (!r.vertices.empty())
     {
-        r.queue.WriteBuffer(r.vertexBuffer, 0, r.vertices.data(), r.vertices.size() * sizeof(Vertex));
-        r.queue.WriteBuffer(r.indexBuffer, 0, r.indices.data(), r.indices.size() * sizeof(uint32_t));
+        r.queue.WriteBuffer(r.vertexBuffer, vertexOffset, r.vertices.data(), r.vertices.size() * sizeof(Vertex));
+        r.queue.WriteBuffer(r.indexBuffer, indexOffset, r.indices.data(), r.indices.size() * sizeof(uint32_t));
     }
     std::vector<float> uniforms(passes.size() * uniformSlot / sizeof(float), 0.0f);
     for (size_t p = 0; p < passes.size(); p++)
@@ -594,7 +605,7 @@ void Renderer::flush()
         uniforms[p * uniformSlot / sizeof(float)] = window ? static_cast<float>(r.width) : r.textures[passes[p].target].width;
         uniforms[p * uniformSlot / sizeof(float) + 1] = window ? static_cast<float>(r.height) : r.textures[passes[p].target].height;
     }
-    r.queue.WriteBuffer(r.uniformBuffer, 0, uniforms.data(), uniforms.size() * sizeof(float));
+    r.queue.WriteBuffer(r.uniformBuffer, uniformOffset, uniforms.data(), uniforms.size() * sizeof(float));
 
     const wgpu::CommandEncoder encoder = r.device.CreateCommandEncoder();
     for (size_t p = 0; p < passes.size(); p++)
@@ -624,12 +635,12 @@ void Renderer::flush()
         passDesc.colorAttachments = &attachment;
 
         const wgpu::RenderPassEncoder encoderPass = encoder.BeginRenderPass(&passDesc);
-        const uint32_t offset = static_cast<uint32_t>(p * uniformSlot);
+        const uint32_t offset = static_cast<uint32_t>(uniformOffset + p * uniformSlot);
         encoderPass.SetBindGroup(0, r.uniformBindGroup, 1, &offset);
         if (!r.vertices.empty())
         {
-            encoderPass.SetVertexBuffer(0, r.vertexBuffer);
-            encoderPass.SetIndexBuffer(r.indexBuffer, wgpu::IndexFormat::Uint32);
+            encoderPass.SetVertexBuffer(0, r.vertexBuffer, vertexOffset);
+            encoderPass.SetIndexBuffer(r.indexBuffer, wgpu::IndexFormat::Uint32, indexOffset);
         }
 
         const wgpu::TextureFormat format = window ? r.format : targetFormat;
@@ -661,6 +672,9 @@ void Renderer::flush()
     r.queue.Submit(1, &commands);
     r.frameStats.passes += static_cast<uint32_t>(passes.size());
     r.frameStats.vertices += static_cast<uint32_t>(r.vertices.size());
+    r.uploadedVertices += r.vertices.size();
+    r.uploadedIndices += r.indices.size();
+    r.uploadedPasses += passes.size();
 
     r.vertices.clear();
     r.indices.clear();

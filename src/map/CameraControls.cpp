@@ -31,10 +31,11 @@ void CameraControls::update(Camera& camera, const Input& input, double deltaSeco
         panned = true;
     }
 
-    if (settings.edgeScroll && input.mouseInside())
+    const Vec2 mouse = input.mouse();
+    const Vec2 view = camera.viewport();
+    const bool overView = view.x > 0 && view.y > 0 && mouse.x >= 0 && mouse.x <= view.x && mouse.y >= 0 && mouse.y <= view.y;
+    if (settings.edgeScroll && input.mouseInside() && overView)
     {
-        const Vec2 mouse = input.mouse();
-        const Vec2 view = camera.viewport();
         const float margin = settings.edgeScrollMargin;
         Vec2 edge;
         if (mouse.x >= 0 && mouse.x < margin)

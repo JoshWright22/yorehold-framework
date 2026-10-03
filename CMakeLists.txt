@@ -106,6 +106,7 @@ endfunction()
 add_library(yorehold-framework
     src/Host.cpp
     src/Scenes.cpp
+    src/animation/Cutscene.cpp
     src/animation/SpriteSheet.cpp
     src/animation/Tween.cpp
     src/audio/Audio.cpp
@@ -142,6 +143,7 @@ add_library(yorehold-framework
     src/rpg/CharacterJson.cpp
     src/rpg/Combat.cpp
     src/rpg/Dice.cpp
+    src/rpg/Compendium.cpp
     src/rpg/Dialogue.cpp
     src/rpg/QuestJournal.cpp
     src/rpg/Ruleset.cpp
@@ -199,6 +201,8 @@ if(YOREHOLD_FRAMEWORK_UNIT_TESTS AND NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQ
         tests/unit/ImageTests.cpp
         tests/unit/DialogueTests.cpp
         tests/unit/QuestTests.cpp
+        tests/unit/CameraControlTests.cpp
+        tests/unit/CutsceneTests.cpp
     )
     target_link_libraries(yorehold-framework-unit-tests PRIVATE yorehold::framework webp)
     target_include_directories(yorehold-framework-unit-tests PRIVATE ${stb_dir})

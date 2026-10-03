@@ -34,6 +34,31 @@ struct ConditionDefinition
     bool advantageOnAttacks = false;
 };
 
+// How much HP a rest or a win gives back. Several styles, so each ruleset picks its own.
+struct Recovery
+{
+    enum class Kind
+    {
+        None,
+        Full,     // back to max HP
+        Fraction, // `fraction` of max HP
+        Flat,     // `amount` HP
+        HitDice,  // `amount` hit dice (0 = one per level), each plus the hit-die ability's modifier
+    };
+    Kind kind = Kind::None;
+    float fraction = 0.5f;
+    int amount = 0;
+    bool reviveDowned = false; // also heals characters at 0 HP (otherwise only standing ones)
+};
+
+struct RestDefinition
+{
+    std::string id;   // "short"
+    std::string name; // "Short rest"
+    Recovery recovery;
+    int perAdventure = 0; // 0 = unlimited
+};
+
 // How score -> modifier works.
 enum class ModifierTable
 {
@@ -63,12 +88,22 @@ struct Ruleset
     int feetPerSquare = 5;
     int carryPerStrength = 15; // pounds per point of the first ability (strength)
 
+    // Healing. Rests are offered by the client between fights; afterVictory heals the winners.
+    std::vector<RestDefinition> rests;
+    Recovery afterVictory;
+    int reviveAfterVictory = 0; // downed winners get up with this much HP (0 = they stay down)
+    int defaultHitDie = 8;
+    std::vector<std::pair<std::string, int>> hitDieByClass; // {"Fighter", 10}
+    std::string hitDieAbility = "con";                      // added per hit die (empty = none)
+
     int abilityModifier(int score) const;
     int proficiencyBonus(int level) const;
     int levelForXp(int xp) const;
     const AbilityDefinition* ability(std::string_view wanted) const;
     const SkillDefinition* skill(std::string_view wanted) const;
     const ConditionDefinition* condition(std::string_view wanted) const;
+    const RestDefinition* rest(std::string_view wanted) const;
+    int hitDie(std::string_view characterClass) const;
     std::string toJson() const;
     static std::optional<Ruleset> fromJson(std::string_view json, std::string* error = nullptr);
 

@@ -31,6 +31,8 @@ public:
 
     // True while the camera tracks `follow`; any manual pan turns it off, recenter turns it back on.
     bool following() const { return following_; }
+    // Starts following again without the recenter key, e.g. when the player orders a walk.
+    void resumeFollowing() { following_ = true; }
 
 private:
     bool following_ = true;

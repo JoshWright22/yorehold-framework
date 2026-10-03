@@ -2,6 +2,8 @@
 #include "ImageTests.h"
 #include "DialogueTests.h"
 #include "QuestTests.h"
+#include "CameraControlTests.h"
+#include "CutsceneTests.h"
 
 #include <yorehold/framework/animation/SpriteSheet.h>
 #include <yorehold/framework/animation/Tween.h>
@@ -350,6 +352,11 @@ void inputFilesAndTheme()
     const auto theme = yh::UiTheme::fromJson("{\"accent\":[1,2,3,255],\"textScale\":1.5}");
     CHECK(theme && theme->accent == yh::Color{1, 2, 3, 255});
     CHECK(!yh::UiTheme::fromJson("{\"accent\":[999,2,3,255]}"));
+    const auto chunky = yh::UiTheme::fromJson("{\"border\":3,\"bevel\":2,\"shadow\":4,\"shadowColor\":[0,0,0,90]}");
+    CHECK(chunky && chunky->border == 3 && chunky->bevel == 2 && chunky->shadow == 4 && chunky->shadowColor.a == 90);
+    CHECK(theme && theme->border == 1 && theme->bevel == 0 && theme->shadow == 0); // thin and flat by default
+    CHECK(!yh::UiTheme::fromJson("{\"border\":-1}"));
+    CHECK(!yh::UiTheme::fromJson("{\"shadow\":99}"));
     const auto savedBindings = yh::InputMap::fromJson(input.map().toJson());
     CHECK(savedBindings && savedBindings->toJson() == input.map().toJson());
     CHECK(!yh::InputMap::fromJson("{\"bad\":[{\"type\":\"mouse\",\"button\":99}]}"));
@@ -412,6 +419,32 @@ void rpg()
     CHECK(parsedRules && parsedRules->toJson() == rules.toJson());
     CHECK(!yh::Ruleset::fromJson("{\"version\":\"bad\"}"));
     CHECK(!yh::Character::fromJson("{\"version\":\"bad\"}"));
+    {
+        // Healing styles: rests and wins come from the ruleset's data.
+        CHECK(rules.rest("short") && rules.rest("short")->perAdventure == 2 && rules.rest("long")->recovery.kind == yh::Recovery::Kind::Full);
+        CHECK(rules.hitDie("Barbarian") == 12 && rules.hitDie("Nobody") == rules.defaultHitDie);
+        CHECK(parsedRules && parsedRules->hitDie("Fighter") == 10 && parsedRules->reviveAfterVictory == 1);
+        yh::Random healRandom(3);
+        yh::Character patient = yh::makeRandomCharacter(rules, "patient", "Fighter", healRandom);
+        const int top = patient.maxHp();
+        patient.hp = 1;
+        std::string detail;
+        const int gained = patient.recover(rules, rules.rest("short")->recovery, healRandom, &detail);
+        CHECK(gained >= 1 && patient.hp == 1 + gained && patient.hp <= top && detail.rfind("1d10", 0) == 0);
+        patient.hp = 0;
+        CHECK(patient.recover(rules, rules.rest("short")->recovery, healRandom) == 0 && patient.down()); // short rests don't revive
+        CHECK(patient.recover(rules, rules.rest("long")->recovery, healRandom) == top && patient.hp == top);
+        patient.hp = 3;
+        CHECK(patient.recover(rules, {yh::Recovery::Kind::Fraction, 0.5f, 0, false}, healRandom) == std::min(top - 3, (top + 1) / 2));
+        patient.hp = 3;
+        CHECK(patient.recover(rules, {yh::Recovery::Kind::Flat, 0.5f, 2, false}, healRandom) == 2 && patient.hp == 5);
+        CHECK(patient.recover(rules, {}, healRandom) == 0);
+        CHECK(!yh::Ruleset::fromJson(R"({"id":"x","name":"x","abilities":[{"id":"con","name":"Con"}],"rests":[{"id":"r","recovery":{"kind":"nap"}}]})"));
+        CHECK(!yh::Ruleset::fromJson(R"({"id":"x","name":"x","abilities":[{"id":"con","name":"Con"}],"hitDieAbility":"luck"})"));
+        const auto custom = yh::Ruleset::fromJson(R"({"id":"x","name":"x","initiativeAbility":"","armorClassAbility":"","abilities":[{"id":"con","name":"Con"}],
+            "rests":[{"id":"camp","name":"Camp","perAdventure":3,"recovery":{"kind":"fraction","fraction":0.25}}],"afterVictory":{"kind":"full"}})");
+        CHECK(custom && custom->rest("camp") && custom->rest("camp")->recovery.fraction == 0.25f && custom->afterVictory.kind == yh::Recovery::Kind::Full);
+    }
     yh::Character hero = yh::makeRandomCharacter(rules, "hero", "fighter", a);
     yh::Character enemy = yh::makeRandomCharacter(rules, "enemy", "fighter", b);
     hero.tempHp = 3;
@@ -892,6 +925,8 @@ int main()
         {"Images", regression::images},
         {"Dialogue", regression::dialogues},
         {"Quests", regression::quests},
+        {"Camera controls", regression::cameraControls},
+        {"Cutscenes", regression::cutscenes},
         {"Tweens", tweens},
         {"Particles", particles},
         {"Visibility/fog", visibilityAndFog},

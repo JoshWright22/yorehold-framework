@@ -45,6 +45,28 @@ There's no single shared world map. Each author makes their own areas, and one a
 - **Zoomed-out view:** low-detail versions of chunks for the world map / far zoom.
 - **Editor:** edits stream too; map makers work on one area without loading the rest.
 
+## Look, fog and lighting (decided 2026-10-03)
+
+- **View:** straight overhead, like Foundry.
+- **Art:** painted by default; art is player-made, so pixel art must also work (nearest filtering per asset/skin).
+- **Fog in co-op:** shared party view by default (everyone sees what any ally sees); a setting switches to per-player view.
+- **Lighting:** several options the GM/map maker picks: off (everything lit), mood only (visual, no rules), and rules (bright/dim/dark, darkvision). Ambient level and colour are settings too.
+- **UI:** the current slim look is temporary. Placeholder style until Josh's UI pass: chunkier, blocky (thick borders, solid fills, bigger hit areas).
+
+## Game flow (decided 2026-10-03)
+
+- **Healing is generic:** the game rules aren't decided, so the framework supports several healing styles as data (rests with hit dice / a fraction / full, healing after combat, revive at N HP, limits per adventure). There will be rests. Spells come later.
+- **Endings are cutscenes:** finishing a chapter plays an end cutscene (camera moves, captions, fades), then returns to the title. Cutscenes are data, so chapter writers can make their own.
+- **Title screen:** Play, Create (the editor), Settings, Exit.
+- **Saves (provisional):** one autosave slot, written after each victory, each rest and on quit; never mid-fight.
+
+## Content in files (decided 2026-10-03)
+
+- **Order of work:** game design and UI design first, then the editor (Create). The editor will do all of it: maps, tokens and encounters, cutscenes and dialogue.
+- **Everything is a file now,** so it can be shared before the editor exists: rulesets, classes, items, creatures, maps, chapters, cutscenes. One JSON file per thing, in plain folders; a chapter folder can also be zipped and mounted.
+- **The chapter writer owns all story content:** dialogue, captions, log lines, which enemies appear and where. Code holds only engine and UI text.
+- **Lookups by id with overrides:** shared content lives in `classes/`, `items/`, `creatures/`, `rulesets/`; a chapter folder can add or replace any of them with its own copies.
+
 ## Framework pieces this needs
 
 - Input actions + bindings + saved control schemes (`yh::input`)
@@ -57,9 +79,5 @@ There's no single shared world map. Each author makes their own areas, and one a
 - Tiles: square tiles that match the grid, auto-joining walls/edges (autotiling), tile size?
 - Object tags beyond: blocks movement, blocks sight, throwable, pickupable, interactable, destructible, container, door, trap, light source?
 - Surfaces (fire, water, grease, ice)?
-- Fog: per-player view or shared party view? Explored areas remembered?
-- Lighting: day/night + darkvision, or lit/unlit?
 - Throws: hit along the arc or only at the landing spot?
 - Editor: built into the client or separate tool? Foundry-style layer toolbar or Photoshop-style layer list?
-- View: straight overhead or slight angle?
-- Art style: pixel, painted, or skin-decided?

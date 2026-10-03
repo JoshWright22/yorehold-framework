@@ -86,6 +86,8 @@ public:
     bool takeDamage(int amount);
     void heal(int amount);
     bool down() const { return hp <= 0; }
+    // Applies a rest's or a win's healing. Returns the HP gained; `detail` gets the roll ("2d10+4: ...").
+    int recover(const Ruleset& rules, const Recovery& recovery, Random& random, std::string* detail = nullptr);
 
     bool equip(size_t inventoryIndex);
     void unequip(size_t inventoryIndex);

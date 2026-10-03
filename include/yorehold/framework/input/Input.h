@@ -98,6 +98,7 @@ public:
     Vec2 mouse() const { return mouse_; }
     Vec2 mouseDelta() const { return mouseDelta_; }
     float wheel() const { return wheel_; }
+    // Pointer motion or a button event establishes its position; leave/focus loss clears this.
     bool mouseInside() const { return mouseInside_; }
     bool keyDown(uint32_t key) const { return keysDown_.contains(key); }
     bool keyPressed(uint32_t key) const { return keysPressed_.contains(key) || keysRepeated_.contains(key); }
@@ -162,7 +163,7 @@ private:
     Vec2 mouse_;
     Vec2 mouseDelta_;
     float wheel_ = 0;
-    bool mouseInside_ = true;
+    bool mouseInside_ = false;
 };
 
 }
