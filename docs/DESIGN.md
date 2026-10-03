@@ -65,6 +65,7 @@ There's no single shared world map. Each author makes their own areas, and one a
 - **Order of work:** game design and UI design first, then the editor (Create). The editor will do all of it: maps, tokens and encounters, cutscenes and dialogue.
 - **Everything is a file now,** so it can be shared before the editor exists: rulesets, classes, items, creatures, maps, chapters, cutscenes. One JSON file per thing, in plain folders; a chapter folder can also be zipped and mounted.
 - **The chapter writer owns all story content:** dialogue, captions, log lines, which enemies appear and where. Code holds only engine and UI text.
+- **Shared files add to the compendium, they are not mods:** opening a `.yore` adds its adventures to the list and its classes, items and creatures to the compendium used when making characters or adventures. Adventures are prewritten and carry everything they use, so nothing a player adds can change one.
 - **Lookups by id with overrides:** shared content lives in `classes/`, `items/`, `creatures/`, `rulesets/`; a chapter folder can add or replace any of them with its own copies.
 
 ## Framework pieces this needs
