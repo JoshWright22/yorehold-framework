@@ -12,32 +12,43 @@ The framework holds everything the game needs that isn't Yorehold-specific: wind
 
 ## Status
 
-Very early. Today it opens an SDL3 window and runs a game loop (`yh::run` and `yh::Game` in `include/yorehold/framework/Host.h`). Drawing still uses SDL_Renderer.
+The framework implements the runtime and generic RPG systems in [docs/DESIGN.md](docs/DESIGN.md):
 
-Next up:
+- SDL3 host and scene stack; batched WebGPU shapes, sprites, atlases, clipping, render targets and screenshots.
+- Rebindable and saved controls, eased cameras, square/hex/gridless maps, path previews, token selection, party chains, floors and combat turn movement.
+- Sparse tile layers, uniform ground, painted images, overview pages, hierarchical navigation, streamed regions, frozen empty regions and authored-map change saves.
+- PNG/JPEG/WebP and other raster art for image tiles, painted maps, circular token portraits and transparent cutout tokens.
+- Layered folder/zip assets, hot reload, TTF text, skin manifests, themes, editable text, sliders, checkboxes and scrolling.
+- Tweens, seeded pooled particles, shadowed coloured lighting and remembered fog per team/floor.
+- Tagged objects and JSON kits, doors/keys/levers, containers, destruction, resumable throws, WAV audio and a stereo mixer.
+- Seeded dice, stats/modifiers, JSON rulesets and character sheets, inventory, conditions and turn-based encounters.
 
-1. WebGPU renderer (Dawn on native, Emscripten in the browser)
-2. Sprite batching and texture atlases
-3. Chunked tile maps
-4. Particles
-5. Browser and Android builds
+The visual browser has 15 scenes, F3 frame times and F12 local screenshot feedback. F8 Images accepts dropped files as tile and token art. The regression executable tests image decoding, simulation, parsing, saves, navigation, input, audio and lifecycle behavior without a GPU. See [docs/FRAMEWORK.md](docs/FRAMEWORK.md) for API examples, build targets and verification status; [docs/STRUCTURE.md](docs/STRUCTURE.md) describes the layout.
+
+Windows/D3D12 is built and tested. Linux, Apple and Android surface implementations and an Emscripten/WebGPU build path are included; those targets require their SDKs and have not been compiled or run in this Windows workspace. Mobile app packaging and platform-specific deployment belong to the consuming client.
 
 ## Requirements
 
-- [CMake](https://cmake.org/download/) 3.24+
-- A C++20 compiler (Visual Studio 2022, recent Clang or GCC)
-- Git (CMake downloads SDL3 on the first configure)
+- Visual Studio 2026 (or Build Tools) with C++; the prebuilt Dawn needs its compiler
+- CMake 4.2+ (bundled with VS 2026)
+- Git (CMake downloads SDL3 and Dawn on the first configure)
 
 ## Building
 
 ```shell
 git clone https://github.com/JoshWright22/yorehold-framework
 cd yorehold-framework
-cmake -S . -B build
-cmake --build build
+cmake -S . -B out -G "Visual Studio 18 2026" -A x64
+cmake --build out --config RelWithDebInfo
 ```
 
-That builds the framework as a static library. To run something, build the [game client](https://github.com/JoshWright22/yorehold) with this repo cloned next to it.
+This builds the static library, visual browser and regression executable. When building through the neighboring client, executables land in `yorehold/out/bin/RelWithDebInfo`.
+
+```shell
+ctest --test-dir out -C RelWithDebInfo --output-on-failure
+out/RelWithDebInfo/yorehold-framework-tests.exe --list
+out/RelWithDebInfo/yorehold-framework-tests.exe --scene "F4 Animation + particles"
+```
 
 ## Using it in a project
 
@@ -49,7 +60,7 @@ target_link_libraries(my-game PRIVATE yorehold::framework)
 ```cpp
 #include <yorehold/framework/Host.h>
 
-class MyGame : public yh::Game { /* load, update, draw */ };
+class MyGame : public yh::Game { /* load, update, draw, unload */ };
 
 int main(int, char**)
 {
