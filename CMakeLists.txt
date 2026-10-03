@@ -129,6 +129,7 @@ add_library(yorehold-framework
     src/map/CameraControls.cpp
     src/map/Grid.cpp
     src/map/FogOfWar.cpp
+    src/map/LightLevels.cpp
     src/map/Objects.cpp
     src/map/Regions.cpp
     src/map/Navigation.cpp

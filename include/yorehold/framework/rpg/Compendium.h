@@ -22,6 +22,7 @@ struct ClassDefinition
     std::string description;
     int hitDie = 8;   // sides
     int speed = 30;   // feet
+    int darkvision = 0; // feet seen without light; becomes the "darkvision" stat, so items can add to it
     int bonusHp = 0;  // added to first-level HP
     std::set<std::string> proficiencies;
     std::vector<std::string> items; // item ids, equipped in order where a slot is free
@@ -44,6 +45,7 @@ struct CreatureDefinition
     int hp = 7;
     int armorClass = 12; // final AC, whatever the armour and DEX
     int speed = 30;
+    int darkvision = 0; // feet
     std::map<std::string, int> abilities; // "dex": 14
     std::set<std::string> proficiencies;
     std::vector<std::string> items;

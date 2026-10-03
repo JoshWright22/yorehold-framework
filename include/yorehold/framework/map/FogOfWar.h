@@ -4,6 +4,7 @@
 #include "yorehold/framework/map/Grid.h"
 
 #include <bitset>
+#include <functional>
 #include <map>
 #include <optional>
 #include <string>
@@ -17,6 +18,9 @@ struct Vision
 {
     Vec2 position;
     float radius = 256;
+    // How far this observer sees cells that aren't lit (darkvision). Only used when update() is
+    // given a `lit` test; negative = as far as `radius`.
+    float darkRadius = -1;
 };
 
 enum class FogState { Unexplored, Explored, Visible };
@@ -27,7 +31,10 @@ class FogOfWar
 {
 public:
     FogOfWar(int width, int height, float cellSize);
-    void update(int team, int floor, std::span<const Vision> observers, std::span<const Wall> walls);
+    // With `lit`, a cell in line of sight is only seen if it is lit or within the observer's
+    // darkRadius (lighting that follows the rules). Without it everything in range is seen.
+    void update(int team, int floor, std::span<const Vision> observers, std::span<const Wall> walls,
+        const std::function<bool(Cell)>& lit = {});
     FogState state(int team, int floor, Cell cell) const;
     void reveal(int team, int floor, Cell cell);
     void reset(int team);

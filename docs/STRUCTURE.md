@@ -16,7 +16,7 @@ yorehold-framework/
     editor/    History (undo/redo)
     graphics/  Renderer, Camera, Font, Image (decoding/resizing/cropping/slicing), Atlas (+ RectPacker), Particles, Lighting, Types
     input/     Input (actions + bindings, gamepads), ControlScheme (Foundry/BG3 presets)
-    map/       Grid, TileMap, Pathfinding, Navigation, Tokens, CameraControls, Objects, Regions, FogOfWar, Templates (+ ruler)
+    map/       Grid, TileMap, Pathfinding, Navigation, Tokens, CameraControls, Objects, Regions, FogOfWar, LightLevels, Templates (+ ruler)
     net/       Transport (loopback, TCP), Session (host-authoritative intents -> commands)
     rpg/       Random (seeded PCG32), Dice, Stats, Ruleset, Character (+ JSON), Combat
     save/      SaveFile (versioned envelopes, migrations, atomic writes)

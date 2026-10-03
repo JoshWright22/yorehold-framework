@@ -105,11 +105,13 @@ std::optional<ClassDefinition> Compendium::classFromJson(std::string_view text, 
         c.description = j.value("description", "");
         c.hitDie = j.value("hitDie", c.hitDie);
         c.speed = j.value("speed", c.speed);
+        c.darkvision = j.value("darkvision", c.darkvision);
         c.bonusHp = j.value("bonusHp", c.bonusHp);
         c.proficiencies = j.value("proficiencies", std::set<std::string>{});
         c.items = j.value("items", std::vector<std::string>{});
         if (!validId(c.id)) throw std::invalid_argument("Class ids use a-z, 0-9, - and _");
-        if (c.hitDie < 1 || c.hitDie > 100 || c.speed < 0 || c.speed > 1000 || c.bonusHp < 0 || c.bonusHp > 1000)
+        if (c.hitDie < 1 || c.hitDie > 100 || c.speed < 0 || c.speed > 1000 || c.bonusHp < 0 || c.bonusHp > 1000
+            || c.darkvision < 0 || c.darkvision > 10000)
             throw std::invalid_argument("Bad class numbers");
         return c;
     });
@@ -125,6 +127,7 @@ std::optional<CreatureDefinition> Compendium::creatureFromJson(std::string_view 
         c.hp = j.value("hp", c.hp);
         c.armorClass = j.value("armorClass", c.armorClass);
         c.speed = j.value("speed", c.speed);
+        c.darkvision = j.value("darkvision", c.darkvision);
         c.abilities = j.value("abilities", std::map<std::string, int>{});
         c.proficiencies = j.value("proficiencies", std::set<std::string>{});
         c.items = j.value("items", std::vector<std::string>{});
@@ -137,7 +140,7 @@ std::optional<CreatureDefinition> Compendium::creatureFromJson(std::string_view 
         }
         if (!validId(c.id)) throw std::invalid_argument("Creature ids use a-z, 0-9, - and _");
         if (c.hp < 1 || c.hp > 100000 || c.armorClass < 0 || c.armorClass > 100 || c.speed < 0 || c.speed > 1000
-            || !std::isfinite(c.token.size) || c.token.size <= 0 || c.token.size > 10)
+            || c.darkvision < 0 || c.darkvision > 10000 || !std::isfinite(c.token.size) || c.token.size <= 0 || c.token.size > 10)
             throw std::invalid_argument("Bad creature numbers");
         return c;
     });
@@ -156,14 +159,14 @@ std::string Compendium::itemToJson(const Item& item)
 std::string Compendium::classToJson(const ClassDefinition& c)
 {
     return json{{"id", c.id}, {"name", c.name}, {"description", c.description}, {"hitDie", c.hitDie}, {"speed", c.speed},
-        {"bonusHp", c.bonusHp}, {"proficiencies", c.proficiencies}, {"items", c.items}}.dump(2);
+        {"darkvision", c.darkvision}, {"bonusHp", c.bonusHp}, {"proficiencies", c.proficiencies}, {"items", c.items}}.dump(2);
 }
 
 std::string Compendium::creatureToJson(const CreatureDefinition& c)
 {
     const Color k = c.token.color;
     return json{{"id", c.id}, {"name", c.name}, {"description", c.description}, {"hp", c.hp}, {"armorClass", c.armorClass},
-        {"speed", c.speed}, {"abilities", c.abilities}, {"proficiencies", c.proficiencies}, {"items", c.items},
+        {"speed", c.speed}, {"darkvision", c.darkvision}, {"abilities", c.abilities}, {"proficiencies", c.proficiencies}, {"items", c.items},
         {"token", {{"color", {k.r, k.g, k.b, k.a}}, {"size", c.token.size}, {"image", c.token.image}}}}.dump(2);
 }
 
@@ -253,6 +256,7 @@ std::optional<Character> Compendium::makeCharacter(const Ruleset& rules, std::st
     Character c = makeRandomCharacter(rules, std::move(name), definition->name, random);
     c.hitDie = "1d" + std::to_string(definition->hitDie);
     c.stats.setBase("speed", static_cast<float>(definition->speed));
+    c.stats.setBase("darkvision", static_cast<float>(definition->darkvision));
     const int hp = std::max(1, definition->hitDie + definition->bonusHp + c.abilityModifier(rules, "con"));
     c.stats.setBase("maxHp", static_cast<float>(hp));
     c.hp = hp;
@@ -286,6 +290,7 @@ std::optional<Character> Compendium::makeCreature(const Ruleset& rules, std::str
     for (const auto& [ability, score] : definition->abilities)
         c.stats.setBase(ability, static_cast<float>(score));
     c.stats.setBase("speed", static_cast<float>(definition->speed));
+    c.stats.setBase("darkvision", static_cast<float>(definition->darkvision));
     c.stats.setBase("maxHp", static_cast<float>(definition->hp));
     c.hp = definition->hp;
     c.proficiencies = definition->proficiencies;

@@ -18,6 +18,7 @@
 #include <yorehold/framework/input/ControlScheme.h>
 #include <yorehold/framework/map/CameraControls.h>
 #include <yorehold/framework/map/FogOfWar.h>
+#include <yorehold/framework/map/LightLevels.h>
 #include <yorehold/framework/map/Navigation.h>
 #include <yorehold/framework/map/Objects.h>
 #include <yorehold/framework/map/Regions.h>
@@ -155,6 +156,36 @@ void visibilityAndFog()
     CHECK(fog.state(0, 1, {2, 2}) == yh::FogState::Unexplored);
     fog.update(0, 0, {}, walls);
     CHECK(fog.state(0, 0, {2, 2}) == yh::FogState::Explored);
+
+    // Light levels: bright near a lamp, dim to its edge, dark beyond and behind walls.
+    yh::LightLevels levels(16, 16, 1);
+    const std::array<yh::Light, 1> lamps{{{{2.5f, 8.5f}, 4}}};
+    levels.setFixed(lamps, walls);
+    CHECK(levels.level({2, 8}) == yh::LightLevel::Bright);
+    CHECK(levels.level({4, 8}) == yh::LightLevel::Bright);
+    CHECK(levels.level({2, 11}) == yh::LightLevel::Dim);
+    CHECK(levels.level({2, 13}) == yh::LightLevel::Dark);
+    CHECK(levels.level({5, 8}) == yh::LightLevel::Dark); // the wall at x = 5 blocks it
+    CHECK(levels.level({-1, 0}) == yh::LightLevel::Dark);
+    const std::array<yh::Light, 1> carried{{{{2.5f, 13.5f}, 2}}};
+    CHECK(levels.lit({2, 13}, carried, walls) && !levels.lit({2, 13}));
+    levels.ambient = yh::LightLevel::Dim;
+    CHECK(levels.level({2, 13}) == yh::LightLevel::Dim && levels.level({2, 8}) == yh::LightLevel::Bright);
+    levels.ambient = yh::LightLevel::Dark;
+
+    // Fog that follows the light: lit cells are seen from afar, dark ones only within darkvision.
+    yh::FogOfWar dark(16, 16, 1);
+    std::array<yh::Vision, 1> watcher{{{{2.5f, 15.5f}, 12, 0}}};
+    const std::function<bool(yh::Cell)> isLit = [&](yh::Cell c) { return levels.lit(c); };
+    dark.update(0, 0, watcher, walls, isLit);
+    CHECK(dark.state(0, 0, {2, 8}) == yh::FogState::Visible);     // lit, far away
+    CHECK(dark.state(0, 0, {2, 13}) == yh::FogState::Unexplored); // close but dark
+    watcher[0].darkRadius = 3;
+    dark.update(0, 0, watcher, walls, isLit);
+    CHECK(dark.state(0, 0, {2, 13}) == yh::FogState::Visible);    // darkvision reaches it
+    CHECK(dark.state(0, 0, {2, 3}) == yh::FogState::Unexplored);  // in range but unlit
+    dark.update(0, 0, watcher, walls);
+    CHECK(dark.state(0, 0, {2, 5}) == yh::FogState::Visible);     // no light test: plain range
     auto restored = yh::FogOfWar::fromJson(fog.toJson());
     CHECK(restored && restored->state(0, 0, {2, 2}) == yh::FogState::Explored);
     fog.reset(0);

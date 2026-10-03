@@ -35,7 +35,8 @@ void FogOfWar::reveal(int team, int floor, Cell cell)
     chunk.explored.set(bit);
 }
 
-void FogOfWar::update(int team, int floor, std::span<const Vision> observers, std::span<const Wall> walls)
+void FogOfWar::update(int team, int floor, std::span<const Vision> observers, std::span<const Wall> walls,
+    const std::function<bool(Cell)>& lit)
 {
     for (auto& [key, chunk] : views_[{team, floor}]) chunk.visible.reset();
     for (const Vision& v : observers)
@@ -48,7 +49,10 @@ void FogOfWar::update(int team, int floor, std::span<const Vision> observers, st
             {
                 const Vec2 center{(x + 0.5f) * cellSize_, (y + 0.5f) * cellSize_};
                 const Vec2 delta = center - v.position;
-                if (delta.x * delta.x + delta.y * delta.y <= v.radius * v.radius && lineOfSight(v.position, center, walls))
+                const float distance2 = delta.x * delta.x + delta.y * delta.y;
+                if (distance2 > v.radius * v.radius) continue;
+                const bool inDarkRange = !lit || v.darkRadius < 0 || distance2 <= v.darkRadius * v.darkRadius;
+                if ((inDarkRange || lit({x, y})) && lineOfSight(v.position, center, walls))
                     reveal(team, floor, {x, y});
             }
     }
