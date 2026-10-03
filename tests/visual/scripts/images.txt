@@ -1,0 +1,5 @@
+10 shot .dev/images-close.png
+15 key Z
+25 shot .dev/images-overview.png
+30 key Z
+40 shot .dev/images-restored.png

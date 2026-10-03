@@ -1,0 +1,16 @@
+1 key F1
+2 keyup F1
+10 move 310 300
+20 move 520 360
+30 shot .dev/fog-explored.png
+40 key F
+41 keyup F
+50 shot .dev/lighting-colours.png
+60 key L
+61 keyup L
+70 shot .dev/lighting-unlit.png
+80 key F
+81 keyup F
+90 key R
+91 keyup R
+100 shot .dev/fog-reset.png

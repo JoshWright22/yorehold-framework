@@ -1,0 +1,61 @@
+5 move 482 275
+6 down left
+7 up left
+10 move 1000 100
+11 down left
+12 move 1064 100
+13 move 1128 132
+14 move 1160 164
+15 up left
+20 shot .dev/tools-paint.png
+25 key Left_Ctrl
+26 key Z
+27 keyup Z
+28 keyup Left_Ctrl
+30 shot .dev/tools-undo.png
+32 key Left_Ctrl
+33 key Y
+34 keyup Y
+35 keyup Left_Ctrl
+37 move 694 275
+38 down left
+39 up left
+41 move 900 300
+42 down left
+43 up left
+45 move 1000 400
+46 down left
+47 up left
+49 move 1100 200
+52 shot .dev/tools-ruler.png
+55 move 627 312
+56 down left
+57 up left
+60 move 1150 450
+62 key Space
+63 keyup Space
+66 shot .dev/tools-line.png
+75 move 650 183
+76 down left
+77 up left
+78 key End
+79 keyup End
+80 text  the Bold
+82 key Left_Shift
+83 key Left
+84 keyup Left
+85 key Left
+86 keyup Left
+87 keyup Left_Shift
+89 shot .dev/tools-text.png
+90 key Return
+91 keyup Return
+92 move 588 65
+93 down left
+94 up left
+95 move 680 151
+96 down left
+97 up left
+99 key F3
+100 keyup F3
+104 shot .dev/tools-pt.png

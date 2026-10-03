@@ -1,0 +1,51 @@
+1 key F1
+2 keyup F1
+4 move 96 256
+5 down left
+6 up left
+8 move 90 210
+9 down left
+10 up left
+12 move 96 300
+13 down left
+14 up left
+40 shot .dev/world-throw.png
+45 move 200 370
+46 down left
+47 up left
+48 key Home
+49 keyup Home
+50 text Café / Æsir — saved note
+51 key Return
+52 keyup Return
+55 move 90 130
+56 down left
+57 up left
+70 move 90 130
+71 down left
+72 up left
+90 shot .dev/world-return.png
+95 move 246 256
+96 down left
+97 up left
+100 move 96 174
+101 down left
+102 up left
+110 move 96 130
+111 down left
+112 up left
+115 move 96 174
+116 down left
+117 up left
+118 down left
+119 up left
+120 move 100 520
+121 wheel -3
+140 shot .dev/world-split.png
+145 move 100 420
+146 down left
+147 up left
+160 move 247 212
+161 down left
+162 up left
+180 shot .dev/world-restored.png

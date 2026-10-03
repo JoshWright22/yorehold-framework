@@ -1,0 +1,86 @@
+#pragma once
+
+#include "yorehold/framework/rpg/Character.h"
+
+#include <string>
+#include <vector>
+
+namespace yh
+{
+
+// What a combatant still has this turn.
+struct TurnBudget
+{
+    bool action = true;
+    bool bonusAction = true;
+    bool reaction = true; // refreshes at the start of your own turn
+    int movementLeft = 0; // squares
+};
+
+struct Combatant
+{
+    Character* character = nullptr; // not owned
+    int team = 0;                    // same team = allies
+    int initiative = 0;
+    RollResult initiativeRoll;
+    TurnBudget budget;
+};
+
+struct AttackResult
+{
+    RollResult attackRoll;
+    RollResult damageRoll;
+    bool hit = false;
+    bool critical = false;
+    bool targetDropped = false;
+};
+
+// Turn-based combat: initiative order, rounds, and each combatant's action economy.
+// Every roll goes through the encounter's Random, so a seeded encounter replays identically.
+class Encounter
+{
+public:
+    Encounter(const Ruleset& rules, uint64_t seed) : rules_(rules), random_(seed) {}
+
+    void add(Character& character, int team);
+    // Rolls initiative (d20 + initiative modifier, ties broken by the modifier) and starts round 1.
+    void start();
+    bool started() const { return started_; }
+
+    int round() const { return round_; }
+    size_t currentIndex() const { return current_; }
+    Combatant& current() { return order_.at(current_); }
+    const std::vector<Combatant>& order() const { return order_; }
+
+    // Ends the current turn; skips anyone who's down. Ticks conditions when a round ends.
+    void nextTurn();
+
+    bool canAct() const { return started_ && !order_.empty() && !order_[current_].character->down() && !finished() && order_[current_].budget.action; }
+    // Spends the action. Attack roll vs AC; a natural 20 always hits and doubles the dice.
+    AttackResult attack(size_t targetIndex);
+    // Spends the action for double movement this turn.
+    bool dash();
+    // Spends `squares` of movement; false if there isn't enough.
+    bool spendMovement(int squares);
+
+    // True once only one team is left standing.
+    bool finished() const;
+    int winningTeam() const;
+
+    const std::vector<std::string>& log() const { return log_; }
+    Random& random() { return random_; }
+
+private:
+    void beginTurn();
+    void addLog(std::string line);
+
+    const Ruleset& rules_;
+    Random random_;
+    std::vector<Combatant> order_;
+    size_t current_ = 0;
+    int round_ = 0;
+    bool started_ = false;
+    std::vector<std::string> log_;
+};
+
+}

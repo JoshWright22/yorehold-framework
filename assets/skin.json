@@ -1,0 +1,14 @@
+{
+  "name": "Yorehold",
+  "author": "Yorehold",
+  "bodyFont": "fonts/AtkinsonHyperlegible-Regular.ttf",
+  "bodyPixels": 19,
+  "animationEase": "outBack",
+  "animationSeconds": 0.25,
+  "ui": {
+    "panel": [18, 20, 30, 240],
+    "accent": [255, 196, 64, 255],
+    "button": [44, 48, 70, 255]
+  },
+  "effects": {"embers": "particles/embers.json"}
+}

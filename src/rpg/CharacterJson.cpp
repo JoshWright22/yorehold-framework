@@ -1,0 +1,181 @@
+// Character <-> JSON. Kept apart from Character.cpp so only this file pays for including nlohmann/json.
+
+#include "yorehold/framework/rpg/Character.h"
+
+#include <nlohmann/json.hpp>
+
+namespace yh
+{
+
+namespace
+{
+
+using nlohmann::json;
+
+constexpr int sheetVersion = 1;
+
+const char* opName(Modifier::Op op)
+{
+    switch (op)
+    {
+    case Modifier::Op::Multiply: return "multiply";
+    case Modifier::Op::Override: return "override";
+    case Modifier::Op::Add: break;
+    }
+    return "add";
+}
+
+Modifier::Op opFromName(const std::string& name)
+{
+    if (name == "multiply")
+        return Modifier::Op::Multiply;
+    if (name == "override")
+        return Modifier::Op::Override;
+    return Modifier::Op::Add;
+}
+
+json modifierJson(const Modifier& m)
+{
+    return {{"stat", m.stat}, {"op", opName(m.op)}, {"value", m.value}, {"source", m.source}};
+}
+
+Modifier modifierFrom(const json& j)
+{
+    return {j.value("stat", ""), opFromName(j.value("op", "add")), j.value("value", 0.0f), j.value("source", "")};
+}
+
+}
+
+std::string Character::toJson() const
+{
+    json j;
+    j["version"] = sheetVersion;
+    j["name"] = name;
+    j["ancestry"] = ancestry;
+    j["class"] = characterClass;
+    j["level"] = level;
+    j["xp"] = xp;
+    j["hitDie"] = hitDie;
+    j["hp"] = hp;
+    j["tempHp"] = tempHp;
+    j["notes"] = notes;
+    j["proficiencies"] = proficiencies;
+
+    json stats_ = json::object();
+    for (const auto& [stat, value] : stats.bases())
+        stats_[stat] = value;
+    j["stats"] = stats_;
+
+    json modifiers = json::array();
+    for (const Modifier& m : stats.modifiers())
+        modifiers.push_back(modifierJson(m));
+    j["modifiers"] = modifiers;
+
+    json resources_ = json::object();
+    for (const auto& [id, r] : resources)
+        resources_[id] = {{"current", r.current}, {"max", r.max}};
+    j["resources"] = resources_;
+
+    json items = json::array();
+    for (const Item& item : inventory)
+    {
+        json itemModifiers = json::array();
+        for (const Modifier& m : item.modifiers)
+            itemModifiers.push_back(modifierJson(m));
+        items.push_back({
+            {"id", item.id}, {"name", item.name}, {"slot", item.slot}, {"damage", item.damage},
+            {"attackAbility", item.attackAbility}, {"weight", item.weight}, {"value", item.value},
+            {"quantity", item.quantity}, {"equipped", item.equipped}, {"modifiers", itemModifiers},
+        });
+    }
+    j["inventory"] = items;
+
+    json conditions_ = json::array();
+    for (const ActiveCondition& c : conditions)
+        conditions_.push_back({{"id", c.id}, {"roundsLeft", c.roundsLeft}});
+    j["conditions"] = conditions_;
+
+    return j.dump(2);
+}
+
+std::optional<Character> Character::fromJson(std::string_view text, std::string* error)
+{
+    const json j = json::parse(text, nullptr, false);
+    if (j.is_discarded() || !j.is_object())
+    {
+        if (error)
+            *error = "not valid JSON";
+        return std::nullopt;
+    }
+    try
+    {
+        if (j.value("version", 0) > sheetVersion)
+        {
+            if (error) *error = "sheet was saved by a newer version";
+            return std::nullopt;
+        }
+        Character c;
+        c.name = j.value("name", "");
+        c.ancestry = j.value("ancestry", "");
+        c.characterClass = j.value("class", "");
+        c.level = j.value("level", 1);
+        c.xp = j.value("xp", 0);
+        c.hitDie = j.value("hitDie", "1d8");
+        c.hp = j.value("hp", 0);
+        c.tempHp = j.value("tempHp", 0);
+        c.notes = j.value("notes", "");
+        if (j.contains("proficiencies"))
+            c.proficiencies = j["proficiencies"].get<std::set<std::string>>();
+        if (j.contains("stats"))
+        {
+            for (const auto& [stat, value] : j["stats"].items())
+                c.stats.setBase(stat, value.get<float>());
+        }
+        if (j.contains("modifiers"))
+        {
+            for (const json& m : j["modifiers"])
+                c.stats.addModifier(modifierFrom(m));
+        }
+        if (j.contains("resources"))
+        {
+            for (const auto& [id, r] : j["resources"].items())
+                c.resources[id] = {r.value("current", 0), r.value("max", 0)};
+        }
+        if (j.contains("inventory"))
+        {
+            for (const json& i : j["inventory"])
+            {
+                Item item;
+                item.id = i.value("id", "");
+                item.name = i.value("name", "");
+                item.slot = i.value("slot", "");
+                item.damage = i.value("damage", "");
+                item.attackAbility = i.value("attackAbility", "str");
+                item.weight = i.value("weight", 0.0f);
+                item.value = i.value("value", 0);
+                item.quantity = i.value("quantity", 1);
+                item.equipped = i.value("equipped", false);
+                if (i.contains("modifiers"))
+                {
+                    for (const json& m : i["modifiers"])
+                        item.modifiers.push_back(modifierFrom(m));
+                }
+                c.inventory.push_back(std::move(item));
+            }
+        }
+        if (j.contains("conditions"))
+        {
+            for (const json& cond : j["conditions"])
+                c.conditions.push_back({cond.value("id", ""), cond.value("roundsLeft", -1)});
+        }
+        return c;
+    }
+    catch (const json::exception& e)
+    {
+        if (error)
+            *error = e.what();
+        return std::nullopt;
+    }
+}
+
+}
