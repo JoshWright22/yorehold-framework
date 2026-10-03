@@ -6,7 +6,9 @@
 #include "yorehold/framework/map/Grid.h"
 
 #include <functional>
+#include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -51,6 +53,8 @@ struct TokenSettings
     // Walk around party members instead of through them. Enemies (other owners) always block.
     bool avoidAllies = true;
     float followDistanceCells = 1.5f;
+    // Followers standing idle in a party member's way step aside instead of blocking them.
+    bool alliesMakeWay = true;
     bool inCombat = false;
     std::optional<size_t> activeTurn; // in combat, only this token may move
 };
@@ -114,6 +118,9 @@ private:
     Passable aroundCreatures(const Passable& passable, const Grid& grid, const Token& mover) const;
     void walk(double deltaSeconds, const Grid& grid);
     void followParty(const Grid& grid, const Passable& passable);
+    void makeWay(const Grid& grid, const Passable& passable);
+    // A follower that will step aside rather than block mover.
+    bool makesWayFor(size_t index, const Token& mover) const;
     bool canMove(size_t index) const;
     void ensureTextures(Renderer& renderer);
     void drawImage(Renderer& renderer, const Token& token);
@@ -136,6 +143,7 @@ private:
     std::function<void()> releaseDisc_, releaseRing_;
     std::map<size_t, size_t> links_;
     std::map<size_t, Cell> followerTargets_;
+    std::set<size_t> steppingAside_;
 };
 
 }

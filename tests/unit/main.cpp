@@ -345,6 +345,29 @@ void tokensAndParty()
     CHECK(controller.tokens[1].path.empty());
     controller.unlink(1); CHECK(!controller.follows(1));
     controller.clearLinks(); CHECK(!controller.follows(2));
+
+    // Walking back through the line: followers step aside, then fall in again.
+    yh::TokenController line;
+    line.tokens.resize(3);
+    for (size_t i = 0; i < 3; ++i) line.tokens[i].position = grid.center({5 - static_cast<int>(i), 1});
+    line.link(1, 0); line.link(2, 1);
+    auto hall = [](yh::Cell c) { return c.x >= 0 && c.x < 20 && c.y >= 0 && c.y < 3; };
+    for (int x = 4; x >= 0; --x) line.tokens[0].path.push_back(grid.center({x, 1}));
+    line.update(input, camera, grid, hall, 0.01);
+    CHECK(!line.tokens[1].path.empty() && grid.cellAt(line.tokens[1].path.back()).y != 1);
+    bool blocked = false;
+    for (int i = 0; i < 40; ++i)
+    {
+        line.update(input, camera, grid, hall, 0.05);
+        for (size_t f = 1; f < 3; ++f)
+        {
+            const yh::Vec2 gap = line.tokens[f].position - line.tokens[0].position;
+            blocked |= gap.x * gap.x + gap.y * gap.y < 5 * 5; // closer than half a cell
+        }
+    }
+    CHECK(!blocked && grid.cellAt(line.tokens[0].position) == yh::Cell{0, 1});
+    CHECK(grid.cellAt(line.tokens[1].position) != grid.cellAt(line.tokens[2].position));
+    CHECK(grid.distance(grid.cellAt(line.tokens[0].position), grid.cellAt(line.tokens[1].position)) <= 2);
 }
 
 void inputFilesAndTheme()

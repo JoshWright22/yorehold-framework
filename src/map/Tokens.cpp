@@ -89,6 +89,7 @@ void TokenController::unlink(size_t follower)
 {
     links_.erase(follower);
     followerTargets_.erase(follower);
+    steppingAside_.erase(follower);
     if (follower < tokens.size()) tokens[follower].path.clear();
 }
 
@@ -99,7 +100,7 @@ void TokenController::clearLinks()
         (void)leader;
         if (follower < tokens.size()) tokens[follower].path.clear();
     }
-    links_.clear(); followerTargets_.clear();
+    links_.clear(); followerTargets_.clear(); steppingAside_.clear();
 }
 
 std::optional<size_t> TokenController::follows(size_t follower) const
@@ -160,7 +161,7 @@ void TokenController::update(const Input& input, const Camera& camera, const Gri
             contextMenuToken.reset();
         }
         gesture_ = Gesture::None;
-        followParty(grid, passable); walk(deltaSeconds, grid);
+        followParty(grid, passable); makeWay(grid, passable); walk(deltaSeconds, grid);
         return;
     }
     if (!input.down(actions::select) && !input.released(actions::select) && gesture_ != Gesture::None)
@@ -299,16 +300,20 @@ void TokenController::update(const Input& input, const Camera& camera, const Gri
     }
 
     followParty(grid, passable);
+    makeWay(grid, passable);
     walk(deltaSeconds, grid);
 }
 
 TokenController::Passable TokenController::aroundCreatures(const Passable& passable, const Grid& grid, const Token& mover) const
 {
     auto blocked = std::make_shared<std::unordered_set<Cell, CellHash>>();
-    for (const Token& other : tokens)
+    for (size_t i = 0; i < tokens.size(); ++i)
     {
+        const Token& other = tokens[i];
         if (other.floor != mover.floor || &other == &mover || (other.selected && other.owner == mover.owner))
             continue; // the moving group doesn't block itself; destinations are spread out instead
+        if (makesWayFor(i, mover))
+            continue;
         const bool ally = other.owner == mover.owner;
         if (!ally || settings.avoidAllies)
             blocked->insert(grid.cellAt(other.path.empty() ? other.position : other.path.back()));
@@ -319,10 +324,13 @@ TokenController::Passable TokenController::aroundCreatures(const Passable& passa
 void TokenController::moveSelectionTo(Cell target, const Grid& grid, const Passable& passable)
 {
     // The leader goes to the clicked cell; everyone else takes the nearest free cells around it.
+    // Followers waiting there will step aside, so they don't take a cell.
     std::unordered_set<Cell, CellHash> taken;
-    for (const Token& token : tokens)
+    for (size_t i = 0; i < tokens.size(); ++i)
     {
-        if (!token.selected && token.floor == viewedFloor)
+        const Token& token = tokens[i];
+        const bool movesAside = settings.alliesMakeWay && !settings.inCombat && controllable(token) && links_.contains(i) && token.path.empty();
+        if (!token.selected && token.floor == viewedFloor && !movesAside)
             taken.insert(grid.cellAt(token.path.empty() ? token.position : token.path.back()));
     }
 
@@ -406,8 +414,10 @@ void TokenController::followParty(const Grid& grid, const Passable& passable)
         const Cell from = grid.cellAt(child.position), to = grid.cellAt(parent.position);
         if (grid.distance(from, to) <= spacing)
         {
+            if (steppingAside_.contains(follower) && !child.path.empty()) continue;
             child.path.clear(); followerTargets_.erase(follower); continue;
         }
+        steppingAside_.erase(follower);
         const auto planned = followerTargets_.find(follower);
         if (planned != followerTargets_.end() && planned->second == to && !child.path.empty()) continue;
         followerTargets_[follower] = to;
@@ -415,6 +425,72 @@ void TokenController::followParty(const Grid& grid, const Passable& passable)
         child.path.clear();
         for (size_t i = 1; i < route.size() && grid.distance(route[i], to) >= spacing; ++i)
             child.path.push_back(grid.center(route[i]));
+    }
+}
+
+bool TokenController::makesWayFor(size_t index, const Token& mover) const
+{
+    const Token& token = tokens[index];
+    return settings.alliesMakeWay && !settings.inCombat && &token != &mover && token.owner == mover.owner && controllable(token)
+        && !token.selected && token.path.empty() && links_.contains(index);
+}
+
+void TokenController::makeWay(const Grid& grid, const Passable& passable)
+{
+    std::erase_if(steppingAside_, [this](size_t i) { return i >= tokens.size() || tokens[i].path.empty(); });
+    if (!settings.alliesMakeWay || settings.inCombat) return;
+
+    // Cells our walking tokens are about to pass through, and cells someone stands in or is headed to.
+    std::unordered_set<Cell, CellHash> route, standing;
+    for (size_t i = 0; i < tokens.size(); ++i)
+    {
+        const Token& token = tokens[i];
+        if (token.floor != viewedFloor) continue;
+        standing.insert(grid.cellAt(token.path.empty() ? token.position : token.path.back()));
+        if (controllable(token) && !steppingAside_.contains(i))
+            for (const Vec2& at : token.path)
+                route.insert(grid.cellAt(at));
+    }
+    if (route.empty()) return;
+
+    std::vector<Cell> neighbours;
+    for (const auto& [follower, leader] : links_)
+    {
+        (void)leader;
+        if (follower >= tokens.size()) continue;
+        Token& token = tokens[follower];
+        if (token.floor != viewedFloor || !controllable(token) || token.selected || !token.path.empty())
+            continue;
+        const Cell here = grid.cellAt(token.position);
+        if (!route.contains(here)) continue;
+
+        // The nearest free cell off the route. None nearby (a narrow corridor): let them pass through.
+        std::optional<Cell> aside;
+        std::deque<Cell> queue{here};
+        std::unordered_set<Cell, CellHash> seen{here};
+        while (!queue.empty() && seen.size() < 80)
+        {
+            const Cell cell = queue.front();
+            queue.pop_front();
+            if (cell != here && passable(cell) && !route.contains(cell) && !standing.contains(cell))
+            {
+                aside = cell;
+                break;
+            }
+            grid.neighbours(cell, neighbours);
+            for (const Cell next : neighbours)
+                if (passable(next) && seen.insert(next).second)
+                    queue.push_back(next);
+        }
+        if (!aside) continue;
+        const std::vector<Cell> path = findPath(grid, here, *aside, passable, 2000);
+        if (path.size() < 2) continue;
+        token.path.clear();
+        for (size_t i = 1; i < path.size(); ++i)
+            token.path.push_back(grid.center(path[i]));
+        steppingAside_.insert(follower);
+        followerTargets_.erase(follower);
+        standing.insert(*aside);
     }
 }
 
