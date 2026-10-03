@@ -89,6 +89,12 @@ public:
     std::optional<DialogueResult> choose(std::string_view choice, const CheckRoll& rollCheck = {});
     void close() { current_.clear(); }
 
+    // Versioned state for a chapter save. Restore validates the document before changing anything.
+    // Node entry effects are already in the saved flags and are not applied a second time.
+    // History and the client's random generator are separate; restore clears the local history.
+    std::string snapshot() const;
+    bool restore(std::string_view json, std::string* error = nullptr);
+
 private:
     bool available(const DialogueChoice& choice) const;
     void apply(const DialogueFlags& changes);

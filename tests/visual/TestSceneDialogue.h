@@ -39,6 +39,8 @@ public:
         if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat)
         {
             if (event.key.key == SDLK_R) reset();
+            else if (event.key.key == SDLK_S) saveCheckpoint();
+            else if (event.key.key == SDLK_L) restoreCheckpoint();
             else if (event.key.key >= SDLK_1 && event.key.key <= SDLK_9)
                 choose(static_cast<size_t>(event.key.key - SDLK_1));
         }
@@ -56,7 +58,7 @@ public:
         const float leftWidth = std::max(240.0f, bounds.w * 0.64f - 32);
         const float right = leftWidth + 48;
         ui_.label({24, 20}, "A conversation at the keep", ui_.theme.accent);
-        ui_.label({24, 52}, "1-9: choose reply | R: replay seed 73", ui_.theme.textDim);
+        ui_.label({24, 52}, "1-9: reply | R: replay | S: save | L: restore", ui_.theme.textDim);
         float y = 104;
         if (const auto* node = session_->current())
         {
@@ -92,8 +94,10 @@ public:
         ui_.log({right, std::max(300.0f, flagY + 20), std::max(100.0f, bounds.w - right - 24),
             std::max(100.0f, bounds.h - std::max(300.0f, flagY + 20) - 80)}, log_);
 
-        if (ui_.button({24, bounds.h - 60, 200, 40}, "Replay conversation")) reset();
-        if (ui_.toggle({240, bounds.h - 60, 180, 40}, "Advantage", advantage_)) advantage_ = !advantage_;
+        if (ui_.button({24, bounds.h - 60, 180, 40}, "Replay conversation")) reset();
+        if (ui_.toggle({214, bounds.h - 60, 140, 40}, "Advantage", advantage_)) advantage_ = !advantage_;
+        if (ui_.button({364, bounds.h - 60, 160, 40}, "Save checkpoint")) saveCheckpoint();
+        if (ui_.button({534, bounds.h - 60, 140, 40}, "Restore", !checkpoint_.empty())) restoreCheckpoint();
         input_.endFrame();
     }
 
@@ -123,6 +127,24 @@ private:
         advantage_ = false;
     }
 
+    void saveCheckpoint()
+    {
+        checkpoint_ = session_->snapshot();
+        checkpointRandom_ = random_;
+        checkpointAdvantage_ = advantage_;
+        log_.push_back("Checkpoint saved");
+    }
+
+    void restoreCheckpoint()
+    {
+        if (checkpoint_.empty()) return;
+        std::string error;
+        if (!session_->restore(checkpoint_, &error)) throw std::runtime_error(error);
+        random_ = checkpointRandom_;
+        advantage_ = checkpointAdvantage_;
+        log_ = {"Checkpoint restored"};
+    }
+
     void choose(size_t index)
     {
         const auto choices = session_->choices();
@@ -149,6 +171,9 @@ private:
     yh::Ruleset rules_ = yh::Ruleset::modern();
     yh::Character hero_;
     yh::Random random_{73};
+    yh::Random checkpointRandom_{73};
+    std::string checkpoint_;
     std::vector<std::string> log_;
     bool advantage_ = false;
+    bool checkpointAdvantage_ = false;
 };

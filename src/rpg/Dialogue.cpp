@@ -257,4 +257,39 @@ std::optional<DialogueResult> DialogueSession::choose(std::string_view id, const
     return result;
 }
 
+std::string DialogueSession::snapshot() const
+{
+    return Json{{"version", 1}, {"dialogue", dialogue_.id}, {"current", current_}, {"flags", flags_}}.dump(2);
+}
+
+bool DialogueSession::restore(std::string_view text, std::string* error)
+{
+    if (error) error->clear();
+    if (text.size() > 4 * 1024 * 1024) return fail(error, "Dialogue checkpoint is too large");
+    try
+    {
+        const auto json = Json::parse(text);
+        const auto& version = json.at("version");
+        if (!version.is_number_integer() || version != 1) return fail(error, "Unsupported dialogue checkpoint version");
+        if (json.at("dialogue").get<std::string>() != dialogue_.id)
+            return fail(error, "Checkpoint belongs to a different dialogue");
+
+        std::string current = json.at("current").get<std::string>();
+        if (!current.empty() && !dialogue_.node(current)) return fail(error, "Saved dialogue node no longer exists: " + current);
+        const auto flags = json.at("flags").get<std::vector<std::string>>();
+        if (!validFlags(flags)) return fail(error, "Checkpoint contains empty or duplicate story flags");
+        std::set<std::string> restoredFlags(flags.begin(), flags.end());
+
+        // All validation and allocation is finished. No entry effects run while restoring.
+        current_ = std::move(current);
+        flags_ = std::move(restoredFlags);
+        history_.clear();
+        return true;
+    }
+    catch (const std::exception& exception)
+    {
+        return fail(error, exception.what());
+    }
+}
+
 }

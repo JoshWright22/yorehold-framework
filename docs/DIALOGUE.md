@@ -34,10 +34,18 @@ Unknown or currently hidden choices return no result and change nothing. A check
 
 Loading validates unique ids, all destinations, flag contradictions, check difficulties and JSON types. Node ids should survive text edits so saved progress can continue to refer to the same authored line. The runtime currently lives in the framework and its browser; the client can attach it to an NPC interaction.
 
+## Conversation checkpoints
+
+`conversation.snapshot()` returns versioned JSON with the dialogue id, current node id and all story flags. Store it with the rest of the chapter save. `conversation.restore(saved, &error)` validates the entire checkpoint before changing the session. A wrong dialogue, removed node, unsupported version or malformed flags fails without changing the conversation. Restoring a terminal line and a closed conversation both work.
+
+Restoring uses the saved flags directly; it does not repeat node-entry effects. The local choice history is cleared on a successful restore. Save your transcript and the client's random generator separately if you need to preserve them. F9 demonstrates this by keeping a copy of its seeded generator beside the checkpoint, so replaying a check after a restore gives the same roll.
+
+Press **S** to save a checkpoint and **L** to restore it in F9. The buttons do the same thing. A replay restarts the conversation; it keeps the saved checkpoint available until you replace it.
+
 Run the focused regressions with the normal framework CTest target. The visual script walks the rumor branch, opens the gate, then replays and makes a character check:
 
 ```powershell
 ./yorehold/out/bin/RelWithDebInfo/yorehold-framework-tests.exe --scene 'F9 Dialogue' --hidden --no-vsync --frames 45 --fixed-dt 0.0166666667 --input yorehold-framework/tests/visual/scripts/dialogue.txt
 ```
 
-Verified on Windows/MSVC: the framework and visual browser build without warnings; all 2,289 checks pass across 21 groups. The dialogue script saves greeting, rumor, gate-open and check-result screenshots without GPU validation errors.
+Verified on Windows/MSVC: the framework and visual browser build without warnings; all 2,320 checks pass across 21 groups and CTest passes. The dialogue script saves greeting, rumor, gate-open, restored and check-result screenshots without GPU validation errors.

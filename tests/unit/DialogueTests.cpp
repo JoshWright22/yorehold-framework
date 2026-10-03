@@ -82,6 +82,16 @@ void checksAndReplay()
     const auto first = a.choose("convince", [&](std::string_view skill) { return hero.rollCheck(rules, skill, yh::Advantage::None, randomA); });
     const auto replay = b.choose("convince", [&](std::string_view skill) { return hero.rollCheck(rules, skill, yh::Advantage::None, randomB); });
     CHECK(first && replay && first->roll->describe() == replay->roll->describe() && first->to == replay->to);
+
+    // Skill checks use the modified total, even when the die itself is a natural 1 or 20.
+    for (bool naturalTwenty : {false, true})
+    {
+        yh::DialogueSession session(dialogue);
+        const auto result = session.choose("convince", [naturalTwenty](std::string_view) {
+            return yh::RollResult{"1d20", naturalTwenty ? 11 : 12, {{20, naturalTwenty ? 20 : 1, true}}, naturalTwenty ? -9 : 11};
+        });
+        CHECK(result && result->passed == !naturalTwenty);
+    }
 }
 
 void malformedData()
@@ -116,6 +126,55 @@ void malformedData()
     CHECK(refused);
 }
 
+void checkpoints()
+{
+    using Json = nlohmann::json;
+    const auto dialogue = *yh::Dialogue::fromJson(story);
+    yh::DialogueSession session(dialogue, {"from_another_chapter"});
+    const auto greeting = session.snapshot();
+    CHECK(session.choose("ask") && session.choose("known") && session.finished());
+    const auto ending = session.snapshot();
+    std::string error = "old error";
+    CHECK(session.restore(greeting, &error) && error.empty());
+    CHECK(session.snapshot() == greeting && session.history().empty() && !session.finished());
+    CHECK(session.flags().contains("from_another_chapter") && !session.flags().contains("gate_open"));
+    CHECK(session.restore(ending) && session.finished() && session.current()->id == "open");
+    session.close();
+    const auto closed = session.snapshot();
+    yh::DialogueSession other(dialogue);
+    CHECK(other.restore(closed) && other.finished() && !other.current());
+
+    // A checkpoint is authoritative: restoring does not reapply the destination's entry flags.
+    auto state = Json::parse(ending);
+    state["flags"] = Json::array();
+    CHECK(other.restore(state.dump()) && other.flags().empty() && other.current()->id == "open");
+
+    const auto reject = [&](Json bad) {
+        const auto before = session.snapshot();
+        std::string message;
+        CHECK(!session.restore(bad.dump(), &message) && !message.empty());
+        CHECK(session.snapshot() == before);
+    };
+    const auto original = Json::parse(greeting);
+    state = original; state["version"] = 2; reject(state);
+    state = original; state["version"] = 1.0; reject(state);
+    state = original; state["dialogue"] = "other"; reject(state);
+    state = original; state["current"] = "removed_node"; reject(state);
+    state = original; state["flags"] = {"duplicate", "duplicate"}; reject(state);
+    state = original; state["flags"] = {""}; reject(state);
+    state = original; state["flags"] = {2}; reject(state);
+    state = original; state.erase("flags"); reject(state);
+    state = original; state["current"] = nullptr; reject(state);
+    CHECK(!session.restore("{") && session.snapshot() == closed);
+    CHECK(!session.restore(std::string(4 * 1024 * 1024 + 1, ' ')) && session.snapshot() == closed);
+
+    // A failed restore also keeps the transcript; a successful one starts a new local transcript.
+    yh::DialogueSession ongoing(dialogue);
+    ongoing.choose("ask");
+    CHECK(!ongoing.restore("null") && ongoing.history().size() == 1);
+    CHECK(ongoing.restore(greeting) && ongoing.history().empty());
+}
+
 }
 
 void dialogues()
@@ -123,6 +182,7 @@ void dialogues()
     branchesAndFlags();
     checksAndReplay();
     malformedData();
+    checkpoints();
 }
 
 }
