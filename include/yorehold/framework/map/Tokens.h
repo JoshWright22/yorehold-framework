@@ -96,6 +96,9 @@ public:
     Font* labelFont = nullptr;
 
     void update(const Input& input, const Camera& camera, const Grid& grid, const Passable& passable, double deltaSeconds);
+    // Separate gestures from walking so simulation needs no camera or input.
+    void handleInput(const Input& input, const Camera& camera, const Grid& grid, const Passable& passable);
+    void advance(const Grid& grid, const Passable& passable, double deltaSeconds);
     // Draws through the camera transform (call between camera.apply and renderer.pop).
     void draw(Renderer& renderer, const Camera& camera, const Grid& grid);
     // Screen-space extras: selection box and the "N squares" label.

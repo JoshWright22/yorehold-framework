@@ -148,6 +148,19 @@ std::optional<Vec2> TokenController::leaderPosition() const
 
 void TokenController::update(const Input& input, const Camera& camera, const Grid& grid, const Passable& passable, double deltaSeconds)
 {
+    handleInput(input, camera, grid, passable);
+    advance(grid, passable, deltaSeconds);
+}
+
+void TokenController::advance(const Grid& grid, const Passable& passable, double deltaSeconds)
+{
+    followParty(grid, passable);
+    makeWay(grid, passable);
+    walk(deltaSeconds, grid);
+}
+
+void TokenController::handleInput(const Input& input, const Camera& camera, const Grid& grid, const Passable& passable)
+{
     contextChoice.reset();
     lastMouse_ = input.mouse();
     if (contextMenuToken && input.buttonPressed(MouseButton::Left) && !menuArea_.contains(input.mouse())) contextMenuToken.reset();
@@ -161,7 +174,6 @@ void TokenController::update(const Input& input, const Camera& camera, const Gri
             contextMenuToken.reset();
         }
         gesture_ = Gesture::None;
-        followParty(grid, passable); makeWay(grid, passable); walk(deltaSeconds, grid);
         return;
     }
     if (!input.down(actions::select) && !input.released(actions::select) && gesture_ != Gesture::None)
@@ -299,9 +311,6 @@ void TokenController::update(const Input& input, const Camera& camera, const Gri
         previewPath_ = findPath(grid, grid.cellAt(*leader), hoverCell, aroundCreatures(passable, grid, *leaderToken), 20000);
     }
 
-    followParty(grid, passable);
-    makeWay(grid, passable);
-    walk(deltaSeconds, grid);
 }
 
 TokenController::Passable TokenController::aroundCreatures(const Passable& passable, const Grid& grid, const Token& mover) const

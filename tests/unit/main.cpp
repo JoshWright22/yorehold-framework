@@ -336,7 +336,7 @@ void tokensAndParty()
     yh::Camera camera;
     yh::Input input;
     auto passable = [](yh::Cell c) { return c.x >= 0 && c.x < 20 && c.y >= 0 && c.y < 10; };
-    for (int i = 0; i < 60; ++i) controller.update(input, camera, grid, passable, 0.1);
+    for (int i = 0; i < 60; ++i) controller.advance(grid, passable, 0.1);
     CHECK(controller.tokens[1].position.x > 60);
     CHECK(grid.distance(grid.cellAt(controller.tokens[0].position), grid.cellAt(controller.tokens[1].position)) >= 1);
     controller.settings.inCombat = true; controller.settings.activeTurn = 0;
