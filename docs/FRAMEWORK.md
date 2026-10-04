@@ -121,6 +121,57 @@ Conditions are data too. A `ConditionDefinition` is one JSON object, either in a
 
 `Character::addCondition(rules, id, rounds, value)` applies one (leave `rounds` out for the definition's duration), `conditionValue` and `hasFlag` read them, `conditionEvent(rules, event)` ends everything that listens for an event and returns the ids, and `endRound(rules, &random)` counts durations down, applies decay and rolls saves. `Encounter` raises `turnStart`, `turnEnd`, `attack` (after the roll) and `damage` itself, runs `endRound` when a round ends and logs each condition that ends; the game raises the rest. A condition the ruleset does not define is still tracked by id, with nothing attached. Unknown events, stacking names, saves with an ability the ruleset lacks and `removes` naming a missing condition all fail validation.
 
+### Effects
+
+An `Effect` is what a spell, an action, an item, a trap or a feature does: a list of steps, read from JSON and run by the framework. `Effect::fromJson` takes either the list itself or an object with `effects` and an optional `save`:
+
+```json
+{
+  "save": { "ability": "dex", "dc": "caster" },
+  "effects": [
+    { "do": "damage", "dice": "3d6", "type": "fire", "target": "area", "onSave": "half",
+      "scale": { "by": "slot", "from": 1, "dice": "1d6" } },
+    { "do": "condition", "id": "burning", "target": "area", "when": "saveFailed" }
+  ]
+}
+```
+
+Every step has `do` and may have:
+
+| Field | Meaning |
+|---|---|
+| `target` | Who it lands on: `self` (whoever does it), `target` (who it was aimed at; the default), `area`, `allies` or `enemies` (the host says who those are). |
+| `when` | Leave out for always. A result of a roll made earlier in the effect: `hit`, `miss`, `crit`, `success`, `failure` (a check), `saveFailed`, `saveSucceeded`. Or an event (`turnStart`, `turnEnd` and the other condition events): such a step is skipped when the effect is done, and is the only kind that runs when the effect is run for that event. |
+| `onSave` | What a successful save does to this step: `full` (nothing; the default), `half` (damage only) or `none` (the step does not happen). |
+| `scale` | Grows the step once for each `every` (default 1) levels above `from` (default 1), counted `by` `level` (the doer's, or the one the caller gives) or `slot`. `dice` is added to a rolled amount each time and `value` to an amount, a count or a condition's value. |
+
+The steps:
+
+| `do` | Fields | Does |
+|---|---|---|
+| `damage` | `dice`, `type`, `crit`, `minimum` | Takes HP (temporary HP first). `dice` is dice, a number or `"weapon"` (the doer's weapon dice and bonuses). After a critical hit the dice are rolled twice unless `crit` is `"normal"`. Never less than `minimum` (default 0) before a save halves it. One roll serves everyone the step lands on. Ends the conditions that end on `damage`. |
+| `heal` | `dice` | Gives HP back up to the maximum. Getting someone up from 0 ends the conditions that end on `healed`. |
+| `tempHp` | `dice` | Temporary HP; the larger amount stays, they never add up. |
+| `condition` | `id`, `remove`, `duration`, `value` | Applies a condition for `duration` rounds (default: the condition's own; -1 until something ends it) at `value`, or takes it off with `"remove": true`. |
+| `modifier` | `stat`, `op`, `value`, `duration`, `id` | A stat change that lasts `duration` rounds (default -1, until removed). It is tracked on the sheet as the condition `effect:<id>` (`id` defaults to the effect's name), so it counts down with the rounds, is saved with the sheet, and is replaced, not doubled, when the same thing is done again. |
+| `move` | `how`, `distance` | `push`, `pull` or `teleport` by `distance` squares (default 1; `"speed"` is the doer's speed). Host hook. |
+| `resource` | `id`, `op`, `amount` | `spend` (default) or `restore` `amount` (default 1) of a resource, within 0 and its maximum. The host may supply resources that are not on the sheet. |
+| `summon` | `id`, `count`, `duration` | Host hook: `count` creatures of that id. |
+| `light` | `radius`, `duration` | Host hook: a light on each target, radius in squares. |
+| `surface` | `id`, `size`, `duration` | Host hook: an area of that kind on the map. |
+| `flag` | `id`, `remove` | Host hook: sets or clears a story flag. |
+| `roll` | `kind`, `ability`, `dc`, `against`, `steps` | Makes a roll about each target and then runs `steps` for that target, where `when` tells the results apart. `attack`: the doer's weapon attack against armour class; a natural 1 misses, a natural 20 hits and is critical; ends the doer's conditions that end on `attack`. `check`: the doer rolls `ability` (an ability or skill) against `dc`, the doer's own DC (`"dc": "caster"`), or the target's passive score in `against`. `save`: the target rolls `ability` against `dc`. |
+| `repeat` | `times`, `steps` | Runs `steps` that many times (a number or dice, at most 100). |
+| `choose` | `options` | Each option has a `name` and `steps`; the host picks one. |
+
+A `save` beside the steps is made once by each creature that a step asks it of (through `onSave` or a save `when`), with `dc` a number or `"caster"`. Results of attacks and checks belong to whoever they were rolled against, so under a roll a step aimed at someone else (`"target": "self", "when": "hit"`) follows that roll.
+
+An unknown step, an unknown or misspelt field, a bad name or a number out of range fails `fromJson`, and the message starts with the field: `effects[1].steps[0].dice: ...`. `check(rules)` then checks what only a ruleset can tell: the conditions, abilities and skills named exist, and a step with `onSave` has a save to answer to. Steps nest up to six deep.
+
+`run(host, context)` carries the steps out and returns what happened as a list of `EffectEvent`s (rolls with their dice, damage, healing, conditions added, removed or ended...), which the game turns into its log and its floating numbers. `EffectContext` names the ruleset and the dice, who does it, who it was aimed at, its name, the event if any, and the level, slot and DC to use. `EffectHost` is everything an effect needs from the game: `sheet(who)` and `group("area" | "allies" | "enemies", context)` must be supplied; `damage` and `resource` have defaults that work on the sheet (override `damage` for resistances); `move`, `summon`, `light`, `surface`, `flag` and `choose` do nothing until the game supplies them, and a step whose hook returns false reports nothing. Creatures are the host's own numbers (`EffectActor`); one without a sheet is skipped. An attack run with an encounter's dice rolls exactly what `Encounter::attack` would.
+
+`Character::addModifier(id, modifier, rounds)` is the timed modifier on its own.
+
 `Character` includes inventory, equipment, resources, conditions, HP/temp HP, checks and saves. `Encounter` handles initiative, turns, action/movement budgets, attacks, damage and condition durations. Empty encounters and negative movement requests are rejected. Which actions are legal, and the UI flow around them, remain client responsibilities.
 
 ## Text and languages
@@ -143,7 +194,7 @@ Conditions are data too. A `ConditionDefinition` is one JSON object, either in a
 
 ## Builds and verification
 
-The Windows build passed **2,394 regression checks** (2026-10-03). GPU verification covers the new image scene and existing map, token and world scenes; the previous full sweep covered the original 14 framework scenes and client integration. [VALIDATION.md](VALIDATION.md) records the environment and repeatable interaction scripts.
+The Windows build passed **2,837 regression checks** (2026-10-04). GPU verification covers the new image scene and existing map, token and world scenes; the previous full sweep covered the original 14 framework scenes and client integration. [VALIDATION.md](VALIDATION.md) records the environment and repeatable interaction scripts.
 
 Use the neighboring client build to verify library integration:
 

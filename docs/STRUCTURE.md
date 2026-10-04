@@ -18,7 +18,7 @@ yorehold-framework/
     input/     Input (actions + bindings, gamepads), ControlScheme (Foundry/BG3 presets)
     map/       Grid, TileMap, Pathfinding, Navigation, Tokens, CameraControls, Objects, Regions, FogOfWar, LightLevels, Templates (+ ruler)
     net/       Transport (loopback, TCP), Session (host-authoritative intents -> commands)
-    rpg/       Random (seeded PCG32), Dice, Stats, Ruleset, Character (+ JSON), Combat
+    rpg/       Random (seeded PCG32), Dice, Stats, Ruleset, Character (+ JSON), Combat, Effect (step lists run against a host)
     save/      SaveFile (versioned envelopes, migrations, atomic writes)
     text/      Strings (languages, plurals), RichText (markup, effects, icons)
     ui/        Ui (themed widgets, text boxes with selection/clipboard/IME, sliders, scroll areas, log), TextEdit

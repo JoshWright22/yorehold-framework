@@ -102,6 +102,9 @@ public:
     static constexpr int definedDuration = -2;
     void addCondition(const Ruleset& rules, std::string_view id, int rounds = definedDuration, int value = 1);
     void removeCondition(std::string_view id);
+    // A modifier of its own that lasts `rounds` (-1 = until removed), tracked like a condition
+    // under `id`: it counts down with the rounds and removeCondition(id) takes it off.
+    void addModifier(std::string_view id, Modifier modifier, int rounds = -1);
     bool hasCondition(std::string_view id) const;
     int conditionValue(std::string_view id) const; // 0 = doesn't have it
     // One of its conditions carries this flag ("cantAct", "cantMove", or any the game defines).

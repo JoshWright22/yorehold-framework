@@ -234,6 +234,17 @@ void Character::removeCondition(std::string_view id)
     stats.removeSource(conditionSource(id));
 }
 
+void Character::addModifier(std::string_view id, Modifier modifier, int rounds)
+{
+    const auto old = std::find_if(conditions.begin(), conditions.end(), [&](const ActiveCondition& c) { return c.id == id; });
+    if (old != conditions.end())
+        old->roundsLeft = rounds;
+    else
+        conditions.push_back({std::string(id), rounds, 1});
+    modifier.source = conditionSource(id);
+    stats.addModifier(std::move(modifier));
+}
+
 bool Character::hasCondition(std::string_view id) const
 {
     return std::any_of(conditions.begin(), conditions.end(), [&](const ActiveCondition& c) { return c.id == id; });
