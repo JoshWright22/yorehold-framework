@@ -45,6 +45,7 @@ struct EffectStep
     Kind kind = Kind::Damage;
     std::string target = "target"; // self, target, area, allies, enemies
     std::string when;              // empty = always; otherwise a result (hit, saveFailed...) or an event (turnStart...)
+    std::string ifFlag;            // only subjects whose conditions carry this flag
     OnSave onSave = OnSave::Full;
     EffectScale scale;
 

@@ -123,7 +123,7 @@ EffectStep parseStep(const json& j, const std::string& path, int depth)
     step.kind = found->first;
 
     // Fields every step takes, then the ones of its kind; anything else is a slip of the pen.
-    std::vector<const char*> fields{"do", "target", "when", "scale", "onSave"};
+    std::vector<const char*> fields{"do", "target", "when", "ifFlag", "scale", "onSave"};
     using Kind = EffectStep::Kind;
     switch (step.kind)
     {
@@ -253,6 +253,7 @@ EffectStep parseStep(const json& j, const std::string& path, int depth)
     if (!oneOf(step.target, {"self", "target", "area", "allies", "enemies"}))
         fail(path + ".target", "is \"self\", \"target\", \"area\", \"allies\" or \"enemies\"");
     step.when = text(j, path, "when", "");
+    step.ifFlag = text(j, path, "ifFlag", "");
     if (!step.when.empty() && !knownResult(step.when) && !knownEvent(step.when))
         fail(path + ".when", "unknown \"" + step.when + "\"");
     const std::string onSave = text(j, path, "onSave", "full");

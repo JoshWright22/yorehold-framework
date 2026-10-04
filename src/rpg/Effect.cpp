@@ -93,6 +93,12 @@ private:
     // doer healing on a hit) follows the roll made about the creatures in `subjects`.
     bool holds(const EffectStep& step, EffectActor who, const std::vector<EffectActor>& subjects)
     {
+        if (!step.ifFlag.empty())
+        {
+            const Character* subject = host_.sheet(who);
+            if (!subject || !subject->hasFlag(rules_, step.ifFlag))
+                return false;
+        }
         Outcome& outcome = outcomes_[who];
         const std::string& when = step.when;
         if (when == "saveFailed" || when == "saveSucceeded" || step.onSave == EffectStep::OnSave::None)

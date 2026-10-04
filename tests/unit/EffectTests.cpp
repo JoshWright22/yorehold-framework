@@ -555,6 +555,21 @@ void effects()
     stepKinds(*rules);
     rolls(*rules);
     savesAndScaling(*rules);
+
+    yh::Ruleset flagged = *rules;
+    flagged.conditions.push_back(*yh::ConditionDefinition::fromJson(R"({"id":"wounded","flags":["wounded"]})"));
+    TestHost host = table();
+    host.sheets[2].hp = 50;
+    yh::Random random(8);
+    yh::EffectContext context;
+    context.rules = &flagged;
+    context.random = &random;
+    context.self = 0;
+    context.targets = {2, 99};
+    const yh::Effect help = effect(R"([{"do":"heal","dice":1,"ifFlag":"wounded"}])");
+    CHECK(help.run(host, context).events.empty() && host.sheets[2].hp == 50);
+    host.sheets[2].addCondition(flagged, "wounded");
+    CHECK(help.run(host, context).events.size() == 1 && host.sheets[2].hp == 51);
 }
 
 void actions()
@@ -602,6 +617,10 @@ void actions()
     CHECK(refused(R"({"id":"x","requires":{"mood":"good"}})", "requires.mood"));
     CHECK(refused(R"({"id":"x","effects":[{"do":"heal","dice":1},{"do":"explode"}]})", "effects[1].do"));
     CHECK(refused(R"({"id":"x","endsTurn":"yes"})", "endsTurn"));
+    CHECK(refused(R"({"id":"x","target":{"kind":"creature","downed":1}})", "target.downed"));
+    const auto help = yh::ActionDefinition::fromJson(R"({"id":"help","target":{"kind":"creature","side":"ally","downed":true}})");
+    const auto ready = yh::ActionDefinition::fromJson(R"({"id":"ready","readies":"strike","endsTurn":true})");
+    CHECK(help && help->allowsDowned && ready && ready->readies == "strike" && ready->endsTurn);
 
     // What it costs and whether a creature may: hands of the weapon in use, flags and resources.
     yh::Character c = plain("Ana");
@@ -652,6 +671,7 @@ void actions()
     write("misnamed/actions/shout.json", R"({"id":"yell"})");
     write("broken/actions/shout.json", R"({"id":"shout","effects":[{"do":"sing"}]})");
     write("dangling/actions/shout.json", R"({"id":"shout","effects":[{"do":"condition","id":"deafened"}]})");
+    write("bad-ready/actions/ready.json", R"({"id":"ready","readies":"absent"})");
     yh::FileSystem disk;
     CHECK(disk.mountFolder(root.string(), "test"));
     std::vector<yh::ActionDefinition> loaded = basic;
@@ -662,6 +682,8 @@ void actions()
     CHECK(!yh::loadActions(disk, "broken/actions", rules, loaded, &error) && error.find("broken/actions/shout.json") != std::string::npos
         && error.find("effects[0].do") != std::string::npos && error.find("sing") != std::string::npos);
     CHECK(!yh::loadActions(disk, "dangling/actions", rules, loaded, &error) && error.find("deafened") != std::string::npos);
+    CHECK(!yh::loadActions(disk, "bad-ready/actions", rules, loaded, &error) && error.find("ready.json") != std::string::npos
+        && error.find("readies") != std::string::npos);
     CHECK(loaded.size() == 4 && loaded[1].name == "Shout"); // a failed load changes nothing
     CHECK(yh::loadActions(disk, "missing/actions", rules, loaded) && loaded.size() == 4); // no folder, no more actions
     disk.unmount("test");

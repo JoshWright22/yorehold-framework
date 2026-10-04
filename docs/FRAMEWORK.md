@@ -180,11 +180,14 @@ An `ActionDefinition` is something a creature can do on its turn: one JSON objec
 | `endsTurn` | The turn is over once it is done. |
 | `general` | `true` (the default): every creature has it. Otherwise something has to grant it. |
 | `requires` | `flags` the doer must have, flags it must be `without`, and `resources` it must hold at least this much of. `meets(character, rules, &why)` checks them. |
-| `target` | `kind` `self` (the default) or `creature`; for a creature, `side` (`enemy`, the default, `ally` or `any`) and `range` in squares (1 = next to it). |
+| `target` | `kind` `self` (the default) or `creature`; for a creature, `side` (`enemy`, the default, `ally` or `any`), `range` in squares (1 = next to it), and `downed` (default false) to allow unconscious targets. |
+| `readies` | An action id recorded for a later reaction. The folder loader checks that it exists and neither readies another action nor ends the turn. |
 | `log` | A line for the game's log; `{name}` is whoever does it. |
 | `effects`, `save` | What it does, as an `Effect`. The effect is checked against the ruleset when the folder is loaded. |
 
 Paying for the action, checking the target and running the effect are the game's: the framework supplies the definition and the checks on the doer.
+
+Every effect step also accepts `ifFlag`: it only runs for subjects carrying that condition flag. A missing sheet or a subject without the flag is skipped. For example, a Help action can heal only a `downed` target while its other steps aid any ally.
 
 `run(host, context)` carries the steps out and returns what happened as a list of `EffectEvent`s (rolls with their dice, damage, healing, conditions added, removed or ended...), which the game turns into its log and its floating numbers. `EffectContext` names the ruleset and the dice, who does it, who it was aimed at, its name, the event if any, and the level, slot and DC to use. `EffectHost` is everything an effect needs from the game: `sheet(who)` and `group("area" | "allies" | "enemies", context)` must be supplied; `damage` and `resource` have defaults that work on the sheet (override `damage` for resistances); `move`, `summon`, `light`, `surface`, `flag` and `choose` do nothing until the game supplies them, and a step whose hook returns false reports nothing. Creatures are the host's own numbers (`EffectActor`); one without a sheet is skipped. An attack run with an encounter's dice rolls exactly what `Encounter::attack` would.
 

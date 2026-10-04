@@ -33,6 +33,7 @@ struct ActionDefinition
     bool costsHands = false; // instead: one action per hand the weapon in use needs
     bool endsTurn = false;   // the turn is over once it is done
     bool general = true;     // every creature has it; otherwise something has to grant it
+    std::string readies;     // records this action for a later reaction
 
     // What whoever does it needs: condition flags it must have, flags that bar it, and resources
     // it must hold at least this much of.
@@ -43,6 +44,7 @@ struct ActionDefinition
     Target target = Target::Self;
     Side side = Side::Enemy; // who a creature target may be
     int range = 1;           // squares; 1 = next to it
+    bool allowsDowned = false; // a creature target may be unconscious, but not dead or withdrawn
 
     std::string log; // a line for the game's log when it is done; "{name}" is whoever does it
     Effect effect;

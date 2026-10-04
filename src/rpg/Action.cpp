@@ -54,7 +54,7 @@ std::vector<std::string> names(const json& j, const std::string& path, const cha
 ActionDefinition parse(const json& j)
 {
     if (!j.is_object()) fail("action", "is a JSON object");
-    onlyFields(j, "", {"id", "name", "description", "order", "cost", "endsTurn", "general", "requires", "target", "log", "save", "effects"});
+    onlyFields(j, "", {"id", "name", "description", "order", "cost", "endsTurn", "general", "readies", "requires", "target", "log", "save", "effects"});
     ActionDefinition def;
     def.id = text(j, "id", "", 64);
     if (def.id.empty()) fail("id", "is needed, 1 to 64 characters");
@@ -62,6 +62,7 @@ ActionDefinition parse(const json& j)
     if (def.name.empty()) fail("name", "can't be empty");
     def.description = text(j, "description", "", 2000);
     def.log = text(j, "log", "", 200);
+    def.readies = text(j, "readies", "", 64);
     if (j.contains("order"))
     {
         if (!j.at("order").is_number_integer() || j.at("order").get<long long>() < -100000 || j.at("order").get<long long>() > 100000)
@@ -108,7 +109,10 @@ ActionDefinition parse(const json& j)
     {
         const json& target = j.at("target");
         if (!target.is_object()) fail("target", "is an object with a kind");
-        onlyFields(target, "target.", {"kind", "side", "range"});
+        onlyFields(target, "target.", {"kind", "side", "range", "downed"});
+        if (target.contains("downed") && !target.at("downed").is_boolean())
+            fail("target.downed", "is true or false");
+        def.allowsDowned = target.value("downed", false);
         const std::string kind = target.value("kind", json("self")).is_string() ? target.value("kind", std::string("self")) : std::string();
         if (kind != "self" && kind != "creature") fail("target.kind", "is \"self\" or \"creature\"");
         def.target = kind == "self" ? ActionDefinition::Target::Self : ActionDefinition::Target::Creature;
@@ -121,8 +125,8 @@ ActionDefinition parse(const json& j)
                 fail("target.range", "is a number of squares from 1 to 1000");
             def.range = target.at("range").get<int>();
         }
-        if (def.target == ActionDefinition::Target::Self && (target.contains("side") || target.contains("range")))
-            fail("target", "side and range are for a creature target");
+        if (def.target == ActionDefinition::Target::Self && (target.contains("side") || target.contains("range") || target.contains("downed")))
+            fail("target", "side, range and downed are for a creature target");
     }
 
     json effect = json::object();
@@ -236,6 +240,15 @@ bool loadActions(const FileSystem& files, std::string_view folder, const Ruleset
                 *old = std::move(def);
             else
                 next.push_back(std::move(def));
+        }
+        for (const ActionDefinition& action : next)
+        {
+            if (action.readies.empty())
+                continue;
+            where = std::string(folder) + "/" + action.id + ".json";
+            const ActionDefinition* ready = findAction(next, action.readies);
+            if (!ready || !ready->readies.empty() || ready->endsTurn)
+                throw std::invalid_argument("readies: must name an action that does not ready another or end the turn");
         }
     }
     catch (const std::exception& e)
