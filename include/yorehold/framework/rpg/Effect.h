@@ -82,6 +82,7 @@ struct EffectContext
     int level = 0; // 0 = the level on the doer's sheet
     int slot = 0;  // the slot it was cast from, for steps that scale by slot
     int dc = 10;   // the doer's DC, for saves and checks that ask for "caster"
+    bool criticalDamage = false; // set on the context delivered to the damage host hook
 };
 
 // What a step did, in order, for the game to show.

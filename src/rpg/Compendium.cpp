@@ -102,6 +102,29 @@ int abilityAdjustedArmor(const Ruleset& rules, const Character& c, int armorClas
         - (rules.proficiencyRanks.empty() ? 0 : c.proficiencyModifier(rules, "armor"));
 }
 
+std::map<std::string, Resource> resourcesFrom(const json& j)
+{
+    const auto data = j.value("resources", json::object());
+    if (!data.is_object() || data.size() > 1000) throw std::invalid_argument("Resources must be an object");
+    std::map<std::string, Resource> resources;
+    for (const auto& [id, value] : data.items())
+    {
+        const int maximum = value.at("max").get<int>();
+        const int current = value.value("current", maximum);
+        if (id.empty() || id.size() > 64 || maximum < 0 || maximum > 100000 || current < 0 || current > maximum)
+            throw std::invalid_argument("Invalid resource: " + id);
+        resources[id] = {current, maximum};
+    }
+    return resources;
+}
+
+json resourcesJson(const std::map<std::string, Resource>& resources)
+{
+    json data = json::object();
+    for (const auto& [id, value] : resources) data[id] = {{"current", value.current}, {"max", value.max}};
+    return data;
+}
+
 }
 
 std::optional<Item> Compendium::itemFromJson(std::string_view text, std::string* error)
@@ -123,6 +146,7 @@ std::optional<ClassDefinition> Compendium::classFromJson(std::string_view text, 
         c.proficiencies = j.value("proficiencies", std::set<std::string>{});
         c.proficiencyRanks = ranksFrom(j);
         c.dcAbility = j.value("dcAbility", std::string{});
+        c.resources = resourcesFrom(j);
         if (c.dcAbility.size() > 64) throw std::invalid_argument("DC ability is too long");
         c.items = j.value("items", std::vector<std::string>{});
         if (!validId(c.id)) throw std::invalid_argument("Class ids use a-z, 0-9, - and _");
@@ -142,6 +166,8 @@ std::optional<CreatureDefinition> Compendium::creatureFromJson(std::string_view 
         c.description = j.value("description", "");
         c.hp = j.value("hp", c.hp);
         c.level = j.value("level", c.level);
+        c.deathSaves = j.value("deathSaves", false);
+        c.resources = resourcesFrom(j);
         c.armorClass = j.value("armorClass", c.armorClass);
         c.speed = j.value("speed", c.speed);
         c.darkvision = j.value("darkvision", c.darkvision);
@@ -185,7 +211,7 @@ std::string Compendium::classToJson(const ClassDefinition& c)
 {
     return json{{"id", c.id}, {"name", c.name}, {"description", c.description}, {"hitDie", c.hitDie}, {"speed", c.speed},
         {"darkvision", c.darkvision}, {"bonusHp", c.bonusHp}, {"proficiencies", c.proficiencies}, {"items", c.items},
-        {"proficiencyRanks", c.proficiencyRanks}, {"dcAbility", c.dcAbility}}.dump(2);
+        {"proficiencyRanks", c.proficiencyRanks}, {"dcAbility", c.dcAbility}, {"resources", resourcesJson(c.resources)}}.dump(2);
 }
 
 std::string Compendium::creatureToJson(const CreatureDefinition& c)
@@ -194,7 +220,8 @@ std::string Compendium::creatureToJson(const CreatureDefinition& c)
     return json{{"id", c.id}, {"name", c.name}, {"description", c.description}, {"hp", c.hp}, {"level", c.level}, {"armorClass", c.armorClass},
         {"speed", c.speed}, {"darkvision", c.darkvision}, {"abilities", c.abilities}, {"proficiencies", c.proficiencies}, {"items", c.items},
         {"token", {{"color", {k.r, k.g, k.b, k.a}}, {"size", c.token.size}, {"image", c.token.image}}},
-        {"ai", json::parse(c.ai, nullptr, false)}, {"proficiencyRanks", c.proficiencyRanks}, {"dcAbility", c.dcAbility}}.dump(2);
+        {"ai", json::parse(c.ai, nullptr, false)}, {"proficiencyRanks", c.proficiencyRanks}, {"dcAbility", c.dcAbility},
+        {"deathSaves", c.deathSaves}, {"resources", resourcesJson(c.resources)}}.dump(2);
 }
 
 bool Compendium::load(const FileSystem& files, std::string_view folder, std::string* error)
@@ -363,6 +390,7 @@ std::optional<Character> Compendium::makeCharacter(const Ruleset& rules, std::st
     c.proficiencies = definition->proficiencies;
     c.proficiencyRanks = definition->proficiencyRanks;
     c.dcAbility = definition->dcAbility;
+    c.resources = definition->resources;
     if (!c.checkProficiencyRanks(rules)) return std::nullopt;
     giveItems(c, definition->items);
     return c;
@@ -400,6 +428,8 @@ std::optional<Character> Compendium::makeCreature(const Ruleset& rules, std::str
     c.proficiencyRanks = definition->proficiencyRanks;
     c.dcAbility = definition->dcAbility;
     c.level = definition->level;
+    c.death.saves = definition->deathSaves;
+    c.resources = definition->resources;
     if (!c.checkProficiencyRanks(rules)) return std::nullopt;
     giveItems(c, definition->items);
     // Stat blocks give the final AC, so creatures' gear shouldn't carry AC modifiers.

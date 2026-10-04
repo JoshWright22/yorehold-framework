@@ -64,6 +64,19 @@ int Ruleset::proficiencyBonus(int level) const
     return proficiencyByLevel[std::clamp(level, 1, static_cast<int>(proficiencyByLevel.size())) - 1];
 }
 
+bool Ruleset::checkDeathRules(std::string* error) const
+{
+    if (error) error->clear();
+    if (!death.enabled) return true;
+    for (const auto* id_ : {&death.downedCondition, &death.dyingCondition, &death.stableCondition, &death.deadCondition})
+        if (!id_->empty() && !condition(*id_))
+        {
+            if (error) *error = "Unknown death condition: " + *id_;
+            return false;
+        }
+    return true;
+}
+
 int Ruleset::levelForXp(int xp) const
 {
     int level = 1;

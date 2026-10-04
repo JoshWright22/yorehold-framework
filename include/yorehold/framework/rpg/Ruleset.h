@@ -114,6 +114,19 @@ struct ProficiencyRankDefinition
     bool addsLevel = false;
 };
 
+struct DeathRules
+{
+    bool enabled = false;
+    int saveDc = 10;
+    int successes = 3;
+    int failures = 3;
+    int naturalOneFailures = 2;
+    int naturalTwentyHp = 1; // 0 = an ordinary successful save
+    int damageFailures = 1;
+    int criticalDamageFailures = 2;
+    std::string downedCondition, dyingCondition, stableCondition, deadCondition;
+};
+
 struct Ruleset
 {
     std::string id;
@@ -134,6 +147,7 @@ struct Ruleset
     std::string proficientRank;
     std::string untrainedRank;
     int baseDc = 10;
+    DeathRules death;
     // Total XP needed to reach each level; index 0 = level 2.
     std::vector<int> xpForLevel;
     // A combat turn: free movement up to speed, plus this many actions.
@@ -164,6 +178,7 @@ struct Ruleset
     const ConditionDefinition* condition(std::string_view wanted) const;
     const RestDefinition* rest(std::string_view wanted) const;
     int hitDie(std::string_view characterClass) const;
+    bool checkDeathRules(std::string* error = nullptr) const;
     std::string toJson() const;
     static std::optional<Ruleset> fromJson(std::string_view json, std::string* error = nullptr);
     // Adds every `folder`/<id>.json as a condition, replacing any with the same id. The file name

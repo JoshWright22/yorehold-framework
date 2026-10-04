@@ -7,6 +7,7 @@
 #include "CombatTests.h"
 #include "PositioningTests.h"
 #include "ProficiencyTests.h"
+#include "DeathTests.h"
 #include "CameraControlTests.h"
 #include "CutsceneTests.h"
 
@@ -1477,6 +1478,7 @@ int main()
         {"Shared turns", regression::sharedTurns},
         {"Flanking and cover", regression::positioning},
         {"Proficiency ranks", regression::proficiencies},
+        {"Death saves", regression::deathSaves},
         {"Camera controls", regression::cameraControls},
         {"Cutscenes", regression::cutscenes},
         {"Tweens", tweens},

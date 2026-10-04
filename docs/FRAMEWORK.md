@@ -143,6 +143,34 @@ reading a sheet. Compendium factories refuse invalid choices. Creature JSON also
 (1 by default, 1 to 1000). Its `armorClass` is final at that level: creation subtracts both the
 ability and ranked armour bonus from the stored base to prevent counting either twice.
 
+### Death saves
+
+The optional ruleset `death` object has `enabled` (absent means false), `saveDc`, `successes`,
+`failures`, `naturalOneFailures`, `naturalTwentyHp` (0 disables getting up on a natural 20),
+`damageFailures`, `criticalDamageFailures` and four optional condition IDs: `downedCondition`,
+`dyingCondition`, `stableCondition`, `deadCondition`. Counts are 1 to 100, DC -1000 to 1000,
+natural-20 healing 0 to 100000. Condition IDs must be distinct; call `checkDeathRules` after
+loading external conditions to check references. Default-disabled rulesets keep their old play.
+
+`Character::death` stores save eligibility, successes, failures, stable and dead. Creatures can
+set `deathSaves` (default false); ordinary characters use saves. `syncDeath` reconciles state
+and conditions, `rollDeathSave` rolls one unmodified d20 only while dying, and the rules-aware
+`takeDamage(amount, rules, critical)` records damage at zero HP. Stable sheets stop rolling;
+unabsorbed damage starts dying again with fresh counters. Healing resets counters and gets an
+eligible sheet up; ordinary healing and recovery cannot revive a dead sheet. The optional
+saved `death` object round-trips those fields. Older sheets default to save eligibility, which
+a game can replace from the original creature definition when loading them.
+
+Encounters roll at the combatant's initiative position, including the start of a shared block,
+before skipping downed members. A natural-20 recovery can supply a normal turn. A fight still
+ends when only one team stands. Effects deliver `criticalDamage` to the damage host hook and
+their default host uses the rules-aware damage path.
+
+Class and creature JSON can also supply `resources`: `{"supply":{"max":2,"current":1}}`.
+Current defaults to max; both must be 0 to 100000 and current cannot exceed max. Factories copy
+these into the sheet, letting resource requirements and effects operate without game-specific
+resource names in the framework.
+
 ### Effects
 
 An `Effect` is what a spell, an action, an item, a trap or a feature does: a list of steps, read from JSON and run by the framework. `Effect::fromJson` takes either the list itself or an object with `effects` and an optional `save`:

@@ -65,6 +65,7 @@ std::string Character::toJson() const
     j["proficiencies"] = proficiencies;
     j["proficiencyRanks"] = proficiencyRanks;
     j["dcAbility"] = dcAbility;
+    j["death"] = {{"saves", death.saves}, {"successes", death.successes}, {"failures", death.failures}, {"stable", death.stable}, {"dead", death.dead}};
 
     json stats_ = json::object();
     for (const auto& [stat, value] : stats.bases())
@@ -129,6 +130,17 @@ std::optional<Character> Character::fromJson(std::string_view text, std::string*
         c.hitDie = j.value("hitDie", "1d8");
         c.hp = j.value("hp", 0);
         c.tempHp = j.value("tempHp", 0);
+        if (j.contains("death"))
+        {
+            const auto& death_ = j.at("death");
+            if (!death_.is_object()) throw std::invalid_argument("Sheet death state must be an object");
+            c.death.saves = death_.value("saves", c.death.saves);
+            c.death.successes = death_.value("successes", 0); c.death.failures = death_.value("failures", 0);
+            c.death.stable = death_.value("stable", false); c.death.dead = death_.value("dead", false);
+            if (c.death.successes < 0 || c.death.successes > 100 || c.death.failures < 0 || c.death.failures > 100
+                || (c.death.stable && c.death.dead) || ((c.death.stable || c.death.dead) && c.hp > 0))
+                throw std::invalid_argument("Invalid sheet death state");
+        }
         c.notes = j.value("notes", "");
         if (j.contains("proficiencies"))
             c.proficiencies = j["proficiencies"].get<std::set<std::string>>();

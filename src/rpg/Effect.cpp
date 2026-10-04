@@ -206,7 +206,9 @@ private:
                 }
                 const bool wasUp = !sheet->down();
                 EffectEvent event{EffectEvent::Kind::Damage, actor, context_.self, rolled};
-                event.amount = host_.damage(actor, std::max(0, amount), step.type, context_);
+                EffectContext damageContext = context_;
+                damageContext.criticalDamage = outcome.critical;
+                event.amount = host_.damage(actor, std::max(0, amount), step.type, damageContext);
                 event.critical = doubled;
                 event.dropped = wasUp && sheet->down();
                 event.id = step.type;
@@ -234,8 +236,10 @@ private:
                     continue;
                 }
                 const bool wasDown = sheet->down();
+                sheet->syncDeath(rules_);
                 const int before = sheet->hp;
                 sheet->heal(amount);
+                sheet->syncDeath(rules_);
                 note(EffectEvent::Kind::Heal, actor, {}, sheet->hp - before, *shared);
                 if (wasDown && !sheet->down())
                     ended(actor, sheet->conditionEvent(rules_, "healed"));
@@ -422,10 +426,13 @@ bool EffectHost::hasFlag(EffectActor who, std::string_view flag, const EffectCon
     return subject && context.rules && subject->hasFlag(*context.rules, flag);
 }
 
-int EffectHost::damage(EffectActor who, int amount, std::string_view, const EffectContext&)
+int EffectHost::damage(EffectActor who, int amount, std::string_view, const EffectContext& context)
 {
     if (Character* subject = sheet(who))
-        subject->takeDamage(amount);
+    {
+        if (context.rules) subject->takeDamage(amount, *context.rules, context.criticalDamage);
+        else subject->takeDamage(amount);
+    }
     return amount;
 }
 

@@ -42,6 +42,15 @@ struct ActiveCondition
     int value = 1;       // how strongly, for conditions that stack by value (Frightened 2)
 };
 
+struct DeathState
+{
+    bool saves = true; // creatures can opt out and die immediately at zero HP
+    int successes = 0;
+    int failures = 0;
+    bool stable = false;
+    bool dead = false;
+};
+
 // A character sheet. Holds raw data; anything derived (modifiers, AC, carry limit) is computed
 // from it and a Ruleset, so switching rulesets never leaves stale numbers behind.
 class Character
@@ -63,6 +72,7 @@ public:
     std::set<std::string> proficiencies; // skill ids, ability ids (saves), "weapons", "armor"
     std::map<std::string, std::string> proficiencyRanks; // same targets, plus "dc"; explicit ranks override the legacy list
     std::string dcAbility; // empty: a DC with no ability bonus
+    DeathState death;
     std::string notes;
 
     int abilityScore(std::string_view ability) const { return stats.integer(ability); }
@@ -94,6 +104,11 @@ public:
 
     // Damage burns temporary HP first. Returns true if this dropped the character to 0.
     bool takeDamage(int amount);
+    bool takeDamage(int amount, const Ruleset& rules, bool critical = false);
+    // Reconciles HP, death state and the configured conditions. A dead sheet remains at zero.
+    void syncDeath(const Ruleset& rules);
+    // Only rolls for a dying sheet when death rules are enabled; no ability or proficiency bonus.
+    std::optional<RollResult> rollDeathSave(const Ruleset& rules, Random& random);
     void heal(int amount);
     bool down() const { return hp <= 0; }
     // Applies a rest's or a win's healing. Returns the HP gained; `detail` gets the roll ("2d10+4: ...").

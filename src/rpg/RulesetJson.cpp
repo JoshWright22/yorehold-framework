@@ -58,6 +58,11 @@ std::string Ruleset::toJson() const
     for (const auto& rank : proficiencyRanks)
         j["proficiencyRanks"].push_back({{"id", rank.id}, {"name", rank.name}, {"bonus", rank.bonus}, {"addsLevel", rank.addsLevel}});
     j["proficientRank"] = proficientRank; j["untrainedRank"] = untrainedRank; j["baseDc"] = baseDc;
+    j["death"] = {{"enabled", death.enabled}, {"saveDc", death.saveDc}, {"successes", death.successes}, {"failures", death.failures},
+        {"naturalOneFailures", death.naturalOneFailures}, {"naturalTwentyHp", death.naturalTwentyHp},
+        {"damageFailures", death.damageFailures}, {"criticalDamageFailures", death.criticalDamageFailures},
+        {"downedCondition", death.downedCondition}, {"dyingCondition", death.dyingCondition},
+        {"stableCondition", death.stableCondition}, {"deadCondition", death.deadCondition}};
     j["abilities"] = J::array(); j["skills"] = J::array(); j["conditions"] = J::array(); j["rests"] = J::array();
     for (const auto& r : rests)
         j["rests"].push_back({{"id", r.id}, {"name", r.name}, {"perAdventure", r.perAdventure}, {"recovery", recoveryToJson(r.recovery)}});
@@ -106,6 +111,33 @@ std::optional<Ruleset> Ruleset::fromJson(std::string_view json, std::string* err
         r.proficientRank = j.value("proficientRank", r.proficientRank);
         r.untrainedRank = j.value("untrainedRank", r.untrainedRank);
         r.baseDc = j.value("baseDc", r.baseDc);
+        if (j.contains("death"))
+        {
+            const auto& d = j.at("death");
+            if (!d.is_object()) throw std::invalid_argument("death must be an object");
+            auto& rule = r.death;
+            rule.enabled = d.value("enabled", rule.enabled);
+            rule.saveDc = d.value("saveDc", rule.saveDc);
+            rule.successes = d.value("successes", rule.successes); rule.failures = d.value("failures", rule.failures);
+            rule.naturalOneFailures = d.value("naturalOneFailures", rule.naturalOneFailures);
+            rule.naturalTwentyHp = d.value("naturalTwentyHp", rule.naturalTwentyHp);
+            rule.damageFailures = d.value("damageFailures", rule.damageFailures);
+            rule.criticalDamageFailures = d.value("criticalDamageFailures", rule.criticalDamageFailures);
+            rule.downedCondition = d.value("downedCondition", rule.downedCondition);
+            rule.dyingCondition = d.value("dyingCondition", rule.dyingCondition);
+            rule.stableCondition = d.value("stableCondition", rule.stableCondition);
+            rule.deadCondition = d.value("deadCondition", rule.deadCondition);
+            auto count = [](int value) { return value >= 1 && value <= 100; };
+            if (rule.saveDc < -1000 || rule.saveDc > 1000 || !count(rule.successes) || !count(rule.failures)
+                || !count(rule.naturalOneFailures) || !count(rule.damageFailures) || !count(rule.criticalDamageFailures)
+                || rule.naturalTwentyHp < 0 || rule.naturalTwentyHp > 100000
+                || rule.downedCondition.size() > 64 || rule.dyingCondition.size() > 64
+                || rule.stableCondition.size() > 64 || rule.deadCondition.size() > 64)
+                throw std::invalid_argument("Invalid death rules");
+            std::set<std::string> conditionIds;
+            for (const auto* id_ : {&rule.downedCondition, &rule.dyingCondition, &rule.stableCondition, &rule.deadCondition})
+                if (!id_->empty() && !conditionIds.insert(*id_).second) throw std::invalid_argument("Death conditions must be distinct");
+        }
         std::set<std::string> rankIds;
         const auto rankList = j.value("proficiencyRanks", nlohmann::json::array());
         if (!rankList.is_array() || rankList.size() > 100) throw std::invalid_argument("proficiencyRanks is an array of at most 100 ranks");

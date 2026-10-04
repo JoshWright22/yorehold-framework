@@ -105,6 +105,7 @@ public:
 private:
     void beginTurn();
     void refreshTurn(Combatant& combatant);
+    void deathTurn(Combatant& combatant);
     void nextSharedTurn();
     void addLog(std::string line);
     void conditionsEnded(const Character& character, const std::vector<std::string>& ids); // into the log

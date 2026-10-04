@@ -169,6 +169,7 @@ Advantage Character::attackAdvantage(const Ruleset& rules) const
 
 bool Character::takeDamage(int amount)
 {
+    amount = std::max(0, amount);
     const bool wasUp = hp > 0;
     const int absorbed = std::min(tempHp, amount);
     tempHp -= absorbed;
@@ -178,13 +179,15 @@ bool Character::takeDamage(int amount)
 
 void Character::heal(int amount)
 {
-    hp = std::min(maxHp(), hp + amount);
+    if (death.dead) return;
+    hp = std::min(maxHp(), hp + std::max(0, amount));
+    if (hp > 0) death = {death.saves};
 }
 
 int Character::recover(const Ruleset& rules, const Recovery& recovery, Random& random, std::string* detail)
 {
     if (detail) detail->clear();
-    if (down() && !recovery.reviveDowned)
+    if (death.dead || (down() && !recovery.reviveDowned))
         return 0;
     const int before = std::max(0, hp);
     int amount = 0;
@@ -206,7 +209,8 @@ int Character::recover(const Ruleset& rules, const Recovery& recovery, Random& r
         break;
     }
     }
-    hp = std::min(maxHp(), before + amount);
+    heal(amount);
+    syncDeath(rules);
     return hp - before;
 }
 

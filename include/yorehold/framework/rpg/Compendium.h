@@ -28,6 +28,7 @@ struct ClassDefinition
     std::set<std::string> proficiencies;
     std::map<std::string, std::string> proficiencyRanks;
     std::string dcAbility;
+    std::map<std::string, Resource> resources;
     std::vector<std::string> items; // item ids, equipped in order where a slot is free
 };
 
@@ -54,6 +55,8 @@ struct CreatureDefinition
     std::set<std::string> proficiencies;
     std::map<std::string, std::string> proficiencyRanks;
     std::string dcAbility;
+    bool deathSaves = false;
+    std::map<std::string, Resource> resources;
     std::vector<std::string> items;
     TokenLook token;
     // How it fights when the game plays it, as written in the file (JSON: a profile's name or an

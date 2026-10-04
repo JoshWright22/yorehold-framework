@@ -122,6 +122,17 @@ void Encounter::refreshTurn(Combatant& c)
         c.budget.movementLeft = 0;
 }
 
+void Encounter::deathTurn(Combatant& c)
+{
+    if (c.out) return;
+    const auto result = c.character->rollDeathSave(rules_, random_);
+    if (!result) return;
+    const auto& sheet = *c.character;
+    const std::string state = sheet.death.dead ? "dead" : sheet.death.stable ? "stable" : !sheet.down() ? "gets up"
+        : std::to_string(sheet.death.successes) + " successes, " + std::to_string(sheet.death.failures) + " failures";
+    addLog(sheet.name + " death save (DC " + std::to_string(rules_.death.saveDc) + "): " + result->describe() + " - " + state);
+}
+
 bool Encounter::canSelectTurn(size_t index) const
 {
     return rules_.sharedTurns && started_ && !finished() && index >= blockFirst_ && index < blockEnd_
@@ -179,6 +190,7 @@ void Encounter::nextSharedTurn()
         for (size_t i = blockFirst_; i < blockEnd_; i++)
         {
             Combatant& c = order_[i];
+            if (!c.turnDone) deathTurn(c);
             if (!c.standing()) c.turnDone = true;
             if (c.turnDone) continue;
             if (c.surprised)
@@ -239,6 +251,7 @@ void Encounter::nextTurn()
                 round_ = 1;
         }
         Combatant& c = order_[current_];
+        deathTurn(c);
         if (!c.standing())
             continue;
         if (c.surprised)
@@ -287,7 +300,7 @@ AttackResult Encounter::attack(size_t targetIndex)
     }
     result.damageRoll = damage ? roll(*damage, random_) : RollResult{};
     const int dealt = std::max(1, result.damageRoll.total);
-    result.targetDropped = target.takeDamage(dealt);
+    result.targetDropped = target.takeDamage(dealt, rules_, result.critical);
     line += result.critical ? " - CRITICAL HIT, " : " - hit, ";
     line += result.damageRoll.describe() + " damage";
     if (result.targetDropped)
