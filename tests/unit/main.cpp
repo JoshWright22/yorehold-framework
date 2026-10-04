@@ -646,6 +646,46 @@ void tactics()
     CHECK(first.kind == second.kind && first.cell == second.cell && first.target == second.target && first.score == second.score);
 }
 
+void skins()
+{
+    // Theme files say how big each widget image's corners are.
+    const auto theme = yh::UiTheme::fromJson(R"({"slice":{"default":6,"bar-fill":0,"textbox":2},"imageScale":2})");
+    CHECK(theme && theme->slice == 6 && theme->sliceFor("button") == 6 && theme->sliceFor("bar-fill") == 0 && theme->sliceFor("textbox") == 2 && theme->imageScale == 2);
+    const auto plain = yh::UiTheme::fromJson(R"({"slice":10})");
+    CHECK(plain && plain->sliceFor("panel") == 10 && plain->imageScale == 1);
+    CHECK(!yh::UiTheme::fromJson(R"({"slice":-1})") && !yh::UiTheme::fromJson(R"({"slice":{"panel":5000}})") && !yh::UiTheme::fromJson(R"({"imageScale":0})"));
+    CHECK(!theme->images.button && yh::UiImages::all().size() == 13);
+    yh::UiImage image;
+    image.size = {24, 24};
+    CHECK(static_cast<bool>(image));
+
+    // A skin sits on top of the defaults and only replaces what it has; restricted to its
+    // folders, it can't replace anything else.
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / "yorehold-skin-test";
+    fs::remove_all(root);
+    auto write = [&](const char* file, const char* text) {
+        fs::create_directories((root / file).parent_path());
+        std::ofstream(root / file) << text;
+    };
+    write("base/ui/button.png", "default button");
+    write("base/ui/panel.png", "default panel");
+    write("base/chapters/keep.json", "the real chapter");
+    write("skin/ui/button.png", "skin button");
+    write("skin/chapters/keep.json", "a cheat");
+    write("skin/uix/extra.png", "not in ui");
+    yh::FileSystem files;
+    CHECK(files.mountFolder((root / "base").string(), "base") && files.mountFolder((root / "skin").string(), "skin"));
+    CHECK(files.readText("chapters/keep.json") == "a cheat");
+    files.restrict("skin", {"ui", "fonts/"});
+    CHECK(files.readText("ui/button.png") == "skin button" && files.source("ui/button.png") == "skin");
+    CHECK(files.readText("ui/panel.png") == "default panel" && files.readText("chapters/keep.json") == "the real chapter");
+    CHECK(!files.exists("uix/extra.png") && files.list("ui").size() == 2 && files.list("uix").empty());
+    files.unmount("skin");
+    CHECK(files.readText("ui/button.png") == "default button");
+    fs::remove_all(root);
+}
+
 void savesAndHistory()
 {
     yh::SaveFormat v1("test.save", 1);
@@ -1146,6 +1186,7 @@ int main()
         {"Audio/scenes", audioAndScenes},
         {"RPG", rpg},
         {"Tactics", tactics},
+        {"Skins", skins},
         {"Saves/history", savesAndHistory},
         {"Networking", networking},
         {"Text editing", textEditing},

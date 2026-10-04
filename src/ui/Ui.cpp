@@ -36,9 +36,81 @@ std::optional<UiTheme> UiTheme::fromJson(std::string_view json, std::string* err
         }
         theme.textScale = j.value("textScale", theme.textScale);
         if (!std::isfinite(theme.textScale) || theme.textScale <= 0 || theme.textScale > 8) throw std::invalid_argument("Invalid theme text scale");
+        if (j.contains("slice"))
+        {
+            const auto& slice = j.at("slice");
+            if (slice.is_object())
+            {
+                for (auto it = slice.begin(); it != slice.end(); ++it)
+                {
+                    if (it.key() == "default") theme.slice = it.value().get<float>();
+                    else theme.slices[it.key()] = it.value().get<float>();
+                }
+            }
+            else
+                theme.slice = slice.get<float>();
+        }
+        theme.imageScale = j.value("imageScale", theme.imageScale);
+        auto sliceOk = [](float v) { return std::isfinite(v) && v >= 0 && v <= 1024; };
+        if (!sliceOk(theme.slice) || !std::all_of(theme.slices.begin(), theme.slices.end(), [&](const auto& s) { return sliceOk(s.second); }))
+            throw std::invalid_argument("Theme slices must be 0..1024");
+        if (!std::isfinite(theme.imageScale) || theme.imageScale <= 0 || theme.imageScale > 16) throw std::invalid_argument("Invalid theme image scale");
         return theme;
     }
     catch (const std::exception& e) { if (error) *error = e.what(); return std::nullopt; }
+}
+
+std::span<const UiImages::Named> UiImages::all()
+{
+    static constexpr Named names[] = {
+        {"panel", &UiImages::panel},
+        {"button", &UiImages::button},
+        {"button-hover", &UiImages::buttonHover},
+        {"button-pressed", &UiImages::buttonPressed},
+        {"button-disabled", &UiImages::buttonDisabled},
+        {"button-selected", &UiImages::buttonSelected},
+        {"checkbox-off", &UiImages::checkboxOff},
+        {"checkbox-on", &UiImages::checkboxOn},
+        {"textbox", &UiImages::textBox},
+        {"textbox-focus", &UiImages::textBoxFocus},
+        {"bar-back", &UiImages::barBack},
+        {"bar-fill", &UiImages::barFill},
+        {"slider-knob", &UiImages::sliderKnob},
+    };
+    return names;
+}
+
+float UiTheme::sliceFor(std::string_view image) const
+{
+    const auto found = slices.find(image);
+    return found == slices.end() ? slice : found->second;
+}
+
+void Ui::nineSlice(const UiImage& image, const Rect& area, Color tint, float maxMargin)
+{
+    if (!image || area.w <= 0 || area.h <= 0) return;
+    // Corners never take more than half the image, or half the space they're drawn in.
+    const float source = std::min({image.margin, image.size.x / 2, image.size.y / 2});
+    const float corner = std::min({source * theme.imageScale, maxMargin, area.w / 2, area.h / 2});
+    if (source <= 0 || corner <= 0)
+    {
+        renderer_->drawSprite(image.texture, area, tint);
+        return;
+    }
+    const float u = source / image.size.x, v = source / image.size.y;
+    const float xs[] = {area.x, area.x + corner, area.x + area.w - corner, area.x + area.w};
+    const float ys[] = {area.y, area.y + corner, area.y + area.h - corner, area.y + area.h};
+    const float us[] = {0, u, 1 - u, 1};
+    const float vs[] = {0, v, 1 - v, 1};
+    for (int row = 0; row < 3; row++)
+    {
+        for (int column = 0; column < 3; column++)
+        {
+            const Rect dest{xs[column], ys[row], xs[column + 1] - xs[column], ys[row + 1] - ys[row]};
+            if (dest.w <= 0 || dest.h <= 0) continue;
+            renderer_->drawSpriteRegion(image.texture, dest, {us[column], vs[row], us[column + 1] - us[column], vs[row + 1] - vs[row]}, tint);
+        }
+    }
 }
 
 void Ui::begin(Renderer& renderer, const Input& input)
@@ -61,10 +133,15 @@ static Color shade(Color c, int amount)
     return {channel(c.r), channel(c.g), channel(c.b), c.a};
 }
 
-void Ui::frame(const Rect& area, Color fill, Color outline, bool sunken)
+void Ui::frame(const Rect& area, Color fill, Color outline, bool sunken, const UiImage* image)
 {
     if (theme.shadow > 0)
         renderer_->fillRect({area.x + theme.shadow, area.y + theme.shadow, area.w, area.h}, theme.shadowColor);
+    if (image && *image)
+    {
+        nineSlice(*image, area);
+        return;
+    }
     renderer_->fillRect(area, fill);
     if (theme.bevel > 0)
     {
@@ -81,7 +158,7 @@ void Ui::frame(const Rect& area, Color fill, Color outline, bool sunken)
 
 void Ui::panel(const Rect& area)
 {
-    frame(area, theme.panel, theme.panelBorder);
+    frame(area, theme.panel, theme.panelBorder, false, &theme.images.panel);
 }
 
 void Ui::label(Vec2 position, std::string_view text)
@@ -105,7 +182,11 @@ bool Ui::button(const Rect& area, std::string_view text, bool enabled)
                      : over ? theme.buttonHover
                             : theme.button;
     const bool pressed = over && input_->buttonDown(MouseButton::Left);
-    frame(area, fill, theme.panelBorder, pressed);
+    // A skin with only button.png uses it for every state.
+    const UiImages& images = theme.images;
+    const UiImage* image = !enabled ? &images.buttonDisabled : pressed ? &images.buttonPressed : over ? &images.buttonHover : &images.button;
+    if (!*image) image = &images.button;
+    frame(area, fill, theme.panelBorder, pressed, image);
 
     const Color color = enabled ? theme.text : theme.textDim;
     if (theme.font)
@@ -126,7 +207,17 @@ bool Ui::button(const Rect& area, std::string_view text, bool enabled)
 
 bool Ui::checkbox(const Rect& area, std::string_view text, bool& value)
 {
-    const bool changed = toggle(area, std::string(value ? "[x] " : "[ ] ") + std::string(text), value);
+    const UiImage& box = value ? theme.images.checkboxOn : theme.images.checkboxOff;
+    if (!theme.images.checkboxOn || !theme.images.checkboxOff)
+    {
+        const bool changed = toggle(area, std::string(value ? "[x] " : "[ ] ") + std::string(text), value);
+        if (changed) value = !value;
+        return changed;
+    }
+    const bool changed = button(area, text);
+    const float side = std::min(box.size.y * theme.imageScale, area.h - 8);
+    const float width = side * box.size.x / box.size.y;
+    renderer_->drawSprite(box.texture, {area.x + 10, area.y + (area.h - side) / 2, width, side});
     if (changed) value = !value;
     return changed;
 }
@@ -141,7 +232,13 @@ bool Ui::slider(const Rect& area, float& value, float minimum, float maximum)
     value = std::clamp(value, minimum, maximum);
     bar(area, (value - minimum) / (maximum - minimum), theme.accent);
     const float x = area.x + area.w * (value - minimum) / (maximum - minimum);
-    renderer_->fillRect({x - 3, area.y, 6, area.h}, theme.text);
+    if (const UiImage& knob = theme.images.sliderKnob)
+    {
+        const float width = area.h * knob.size.x / knob.size.y;
+        renderer_->drawSprite(knob.texture, {x - width / 2, area.y, width, area.h});
+    }
+    else
+        renderer_->fillRect({x - 3, area.y, 6, area.h}, theme.text);
     return old != value;
 }
 
@@ -256,8 +353,13 @@ bool Ui::textBox(std::string_view id, const Rect& area, std::string& value, size
     else if (caretX - textScroll_ > visible) textScroll_ = caretX - visible;
     else if (caretX < textScroll_) textScroll_ = caretX;
 
-    renderer_->fillRect(area, theme.buttonDisabled);
-    renderer_->drawRect(area, focused ? theme.accent : theme.panelBorder);
+    if (const UiImage& box = focused && theme.images.textBoxFocus ? theme.images.textBoxFocus : theme.images.textBox)
+        nineSlice(box, area);
+    else
+    {
+        renderer_->fillRect(area, theme.buttonDisabled);
+        renderer_->drawRect(area, focused ? theme.accent : theme.panelBorder);
+    }
     renderer_->pushViewport(area);
     const float left = padding - (focused ? textScroll_ : 0);
     const float lineH = theme.font ? theme.font->lineHeight() : Renderer::lineHeight(theme.textScale);
@@ -315,13 +417,25 @@ void Ui::endScroll()
 bool Ui::toggle(const Rect& area, std::string_view text, bool on)
 {
     const bool clicked = button(area, text);
-    if (on)
+    if (on && theme.images.buttonSelected)
+        nineSlice(theme.images.buttonSelected, area);
+    else if (on)
         renderer_->drawRect(area, theme.accent, std::max(2.0f, theme.border));
     return clicked;
 }
 
 void Ui::bar(const Rect& area, float fraction, Color fill)
 {
+    if (theme.images.barBack && theme.images.barFill)
+    {
+        // Thin bars get thin frames, so there's always room for the fill.
+        const float edge = std::min(theme.images.barBack.margin * theme.imageScale, std::max(1.0f, std::floor(area.h / 4)));
+        nineSlice(theme.images.barBack, area, {}, edge);
+        const Rect inner{area.x + edge, area.y + edge, (area.w - 2 * edge) * std::clamp(fraction, 0.0f, 1.0f), area.h - 2 * edge};
+        if (inner.w > 0 && inner.h > 0)
+            nineSlice(theme.images.barFill, inner, fill);
+        return;
+    }
     renderer_->fillRect(area, theme.buttonDisabled);
     renderer_->fillRect({area.x, area.y, area.w * std::clamp(fraction, 0.0f, 1.0f), area.h}, fill);
     if (theme.bevel > 0 && fraction > 0) // a highlight strip keeps chunky bars from looking flat

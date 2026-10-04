@@ -26,4 +26,10 @@ struct Skin
     UiTheme resolveTheme(Assets& assets) const;
 };
 
+// Fills theme.images from <folder>/<name>.png (or .webp) for every name in UiImages::all():
+// panel, button, button-hover, checkbox-on... Files that don't exist leave that widget drawn from
+// the theme's colours. Mount a skin over the defaults and it only needs the images it changes.
+// Call again after the files change (a skin switch or hot reload).
+void loadUiImages(UiTheme& theme, Assets& assets, std::string_view folder = "ui");
+
 }

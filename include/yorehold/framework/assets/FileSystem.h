@@ -26,6 +26,9 @@ public:
     // `name` identifies the mount for unmount(); defaults to the path.
     bool mountFolder(const std::string& folder, std::string name = {});
     bool mountZip(const std::string& zipFile, std::string name = {});
+    // Limits a mount to files inside these folders ("ui", "fonts"): everything else in it is
+    // ignored. For skins, which may change how the game looks but not its rules or story.
+    void restrict(std::string_view name, std::vector<std::string> folders);
     void unmount(std::string_view name);
     std::vector<std::string> mounts() const;
 

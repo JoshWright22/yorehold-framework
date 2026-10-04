@@ -30,6 +30,7 @@ struct FileSystem::Mount
     bool isZip = false;
     fs::path folder;
     mz_zip_archive zip{};
+    std::vector<std::string> only; // path prefixes it may supply; empty = everything
 
     ~Mount()
     {
@@ -51,8 +52,15 @@ struct FileSystem::Mount
         return file;
     }
 
+    bool allows(std::string_view path) const
+    {
+        return only.empty() || std::any_of(only.begin(), only.end(), [&](const std::string& prefix) { return path.starts_with(prefix); });
+    }
+
     bool has(std::string_view path) const
     {
+        if (!allows(path))
+            return false;
         if (isZip)
             return mz_zip_reader_locate_file(const_cast<mz_zip_archive*>(&zip), std::string(path).c_str(), nullptr, 0) >= 0;
         std::error_code error;
@@ -110,6 +118,20 @@ bool FileSystem::mountZip(const std::string& zipFile, std::string name)
     mount->name = name.empty() ? zipFile : std::move(name);
     mounts_.push_back(std::move(mount));
     return true;
+}
+
+void FileSystem::restrict(std::string_view name, std::vector<std::string> folders)
+{
+    for (std::string& folder : folders)
+    {
+        folder = normalize(folder);
+        if (!folder.empty() && folder.back() != '/')
+            folder += '/';
+    }
+    std::erase_if(folders, [](const std::string& folder) { return folder.empty(); });
+    for (const auto& mount : mounts_)
+        if (mount->name == name)
+            mount->only = folders;
 }
 
 void FileSystem::unmount(std::string_view name)
@@ -203,7 +225,7 @@ std::vector<std::string> FileSystem::list(std::string_view directory) const
                 char name[512];
                 mz_zip_reader_get_filename(&mount->zip, i, name, sizeof(name));
                 const std::string entry = name;
-                if (entry.starts_with(prefix) && entry.find('/', prefix.size()) == std::string::npos && entry.size() > prefix.size())
+                if (entry.starts_with(prefix) && entry.find('/', prefix.size()) == std::string::npos && entry.size() > prefix.size() && mount->allows(entry))
                     names.insert(entry);
             }
             continue;

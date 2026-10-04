@@ -55,7 +55,27 @@ UiTheme Skin::resolveTheme(Assets& assets) const
 {
     UiTheme resolved = theme;
     resolved.font = assets.font(bodyFont, bodyPixels);
+    loadUiImages(resolved, assets);
     return resolved;
+}
+
+void loadUiImages(UiTheme& theme, Assets& assets, std::string_view folder)
+{
+    theme.images = {};
+    for (const UiImages::Named& named : UiImages::all())
+    {
+        for (const char* extension : {".png", ".webp"})
+        {
+            const std::string path = std::string(folder) + "/" + named.name + extension;
+            if (!assets.files().exists(path))
+                continue;
+            UiImage& image = theme.images.*named.image;
+            image.texture = assets.texture(path);
+            image.size = assets.textureSize(path);
+            image.margin = theme.sliceFor(named.name);
+            break;
+        }
+    }
 }
 
 }

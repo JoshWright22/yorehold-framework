@@ -5,6 +5,8 @@
 #include "yorehold/framework/input/Input.h"
 #include "yorehold/framework/ui/TextEdit.h"
 
+#include <map>
+#include <span>
 #include <string>
 #include <optional>
 #include <string_view>
@@ -12,6 +14,35 @@
 
 namespace yh
 {
+
+// One skin image for a widget, stretched nine-slice: the corners keep their size, the edges
+// stretch one way and the middle both ways.
+struct UiImage
+{
+    TextureId texture = 0;
+    Vec2 size;        // of the image, in pixels
+    float margin = 0; // corner size in image pixels; 0 stretches the whole image
+    explicit operator bool() const { return size.x > 0 && size.y > 0; }
+};
+
+// The widget images a skin can supply. Any that are missing fall back to the theme's colours.
+struct UiImages
+{
+    UiImage panel;
+    UiImage button, buttonHover, buttonPressed, buttonDisabled;
+    UiImage buttonSelected; // drawn over a toggle that is on
+    UiImage checkboxOff, checkboxOn; // the box only, drawn at the left of the row
+    UiImage textBox, textBoxFocus;
+    UiImage barBack, barFill; // the fill is tinted with the bar's colour, so draw it in white and greys
+    UiImage sliderKnob;
+
+    struct Named
+    {
+        const char* name; // the file name without its extension: "button-hover"
+        UiImage UiImages::* image;
+    };
+    static std::span<const Named> all();
+};
 
 // Colours and a font for every widget, loaded from skin data.
 struct UiTheme
@@ -35,6 +66,14 @@ struct UiTheme
     Color shadowColor{0, 0, 0, 140};
     float textScale = 2.0f; // debug-font scale, used when there's no font
     Font* font = nullptr;   // body text; set this for real text
+    // Widget images (see loadUiImages in Skin.h). "slice" in the file is the corner size for every
+    // image, or an object of sizes by image name with "default" for the rest. "imageScale" draws
+    // the corners bigger or smaller than the image's own pixels.
+    UiImages images;
+    float slice = 8;
+    std::map<std::string, float, std::less<>> slices;
+    float imageScale = 1;
+    float sliceFor(std::string_view image) const;
     static std::optional<UiTheme> fromJson(std::string_view json, std::string* error = nullptr);
 };
 
@@ -70,8 +109,10 @@ public:
     float lineHeight() const { return theme.font ? theme.font->lineHeight() + 6 : Renderer::lineHeight(theme.textScale) + 6; }
 
 private:
-    // Shadow, fill, bevel and outline in the theme's frame style.
-    void frame(const Rect& area, Color fill, Color outline, bool sunken = false);
+    // Shadow, then the skin's image if it has one, else fill, bevel and outline in the theme's frame style.
+    void frame(const Rect& area, Color fill, Color outline, bool sunken = false, const UiImage* image = nullptr);
+    // `maxMargin` caps the corner size on screen (thin bars).
+    void nineSlice(const UiImage& image, const Rect& area, Color tint = {}, float maxMargin = 1e9f);
     void logWithFont(const Rect& area, const std::vector<std::string>& lines);
     float textWidth(std::string_view text) const;
     size_t textIndexAt(std::string_view text, float x) const;
