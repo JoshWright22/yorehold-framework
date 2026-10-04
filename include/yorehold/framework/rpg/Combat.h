@@ -64,6 +64,8 @@ public:
     void withdraw(size_t index, const std::string& why = {});
 
     // Ends the current turn; skips anyone who's down, out or surprised. Ticks conditions when a round ends.
+    // Conditions follow the fight: they hear turnStart, turnEnd, attack and damage as those happen,
+    // and one flagged "cantAct" or "cantMove" takes the turn's actions or movement.
     void nextTurn();
 
     // The current combatant has `cost` actions left.
@@ -96,6 +98,7 @@ public:
 private:
     void beginTurn();
     void addLog(std::string line);
+    void conditionsEnded(const Character& character, const std::vector<std::string>& ids); // into the log
 
     const Ruleset& rules_;
     Random random_;

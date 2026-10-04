@@ -16,6 +16,18 @@ std::string conditionSource(std::string_view id)
     return "condition:" + std::string(id);
 }
 
+// A condition's modifiers at `value`, tagged so removing the condition takes them off again.
+void addConditionModifiers(StatBlock& stats, const ConditionDefinition& def, int value)
+{
+    for (Modifier m : def.modifiers)
+    {
+        m.source = conditionSource(def.id);
+        if (def.perValue && m.op == Modifier::Op::Add)
+            m.value *= static_cast<float>(value);
+        stats.addModifier(std::move(m));
+    }
+}
+
 std::string itemSource(const Item& item, size_t index)
 {
     return "item:" + item.id + "#" + std::to_string(index);
@@ -189,18 +201,31 @@ void Character::unequip(size_t index)
     stats.removeSource(itemSource(inventory[index], index));
 }
 
-void Character::addCondition(const Ruleset& rules, std::string_view id, int rounds)
+void Character::addCondition(const Ruleset& rules, std::string_view id, int rounds, int value)
 {
-    removeCondition(id); // re-applying refreshes the duration
-    conditions.push_back({std::string(id), rounds});
-    if (const ConditionDefinition* def = rules.condition(id))
+    const ConditionDefinition* def = rules.condition(id);
+    if (rounds == definedDuration)
+        rounds = def ? def->duration : -1;
+    value = std::max(1, value);
+    if (def)
     {
-        for (Modifier m : def->modifiers)
-        {
-            m.source = conditionSource(id);
-            stats.addModifier(std::move(m));
-        }
+        const auto old = std::find_if(conditions.begin(), conditions.end(), [&](const ActiveCondition& c) { return c.id == id; });
+        if (old != conditions.end() && def->stacking == ConditionDefinition::Stacking::Longest
+            && (old->roundsLeft < 0 || (rounds >= 0 && old->roundsLeft > rounds)))
+            rounds = old->roundsLeft;
+        if (def->stacking == ConditionDefinition::Stacking::Value)
+            value = std::min(def->maxValue, value + (old != conditions.end() ? old->value : 0));
+        else
+            value = 1;
     }
+    removeCondition(id); // whatever was there is replaced by what was just worked out
+    conditions.push_back({std::string(id), rounds, value});
+    if (!def)
+        return;
+    addConditionModifiers(stats, *def, value);
+    for (const std::string& other : def->removes)
+        if (other != id)
+            removeCondition(other);
 }
 
 void Character::removeCondition(std::string_view id)
@@ -212,6 +237,64 @@ void Character::removeCondition(std::string_view id)
 bool Character::hasCondition(std::string_view id) const
 {
     return std::any_of(conditions.begin(), conditions.end(), [&](const ActiveCondition& c) { return c.id == id; });
+}
+
+int Character::conditionValue(std::string_view id) const
+{
+    const auto found = std::find_if(conditions.begin(), conditions.end(), [&](const ActiveCondition& c) { return c.id == id; });
+    return found == conditions.end() ? 0 : found->value;
+}
+
+bool Character::hasFlag(const Ruleset& rules, std::string_view flag) const
+{
+    return std::any_of(conditions.begin(), conditions.end(), [&](const ActiveCondition& c) {
+        const ConditionDefinition* def = rules.condition(c.id);
+        return def && def->hasFlag(flag);
+    });
+}
+
+std::vector<std::string> Character::conditionEvent(const Ruleset& rules, std::string_view event)
+{
+    std::vector<std::string> ended;
+    for (const ActiveCondition& c : conditions)
+    {
+        const ConditionDefinition* def = rules.condition(c.id);
+        if (def && def->endsOn(event))
+            ended.push_back(c.id);
+    }
+    for (const std::string& id : ended)
+        removeCondition(id);
+    return ended;
+}
+
+std::vector<std::string> Character::endRound(const Ruleset& rules, Random* random)
+{
+    std::vector<std::string> ended;
+    std::vector<std::pair<std::string, int>> weaker; // conditions whose value dropped, and what is left
+    for (ActiveCondition& c : conditions)
+    {
+        const ConditionDefinition* def = rules.condition(c.id);
+        if (c.roundsLeft > 0 && --c.roundsLeft == 0)
+            ended.push_back(c.id);
+        else if (def && def->decay > 0 && c.value <= def->decay)
+            ended.push_back(c.id);
+        else if (def && !def->saveAbility.empty() && random && rollSave(rules, def->saveAbility, Advantage::None, *random).total >= def->saveDc)
+            ended.push_back(c.id);
+        else if (def && def->decay > 0)
+            weaker.emplace_back(c.id, c.value - def->decay);
+    }
+    for (const std::string& id : ended)
+        removeCondition(id);
+    for (const auto& [id, value] : weaker)
+    {
+        // Put back at its lower value with the time it had left, so its modifiers follow.
+        const auto found = std::find_if(conditions.begin(), conditions.end(), [&](const ActiveCondition& c) { return c.id == id; });
+        const int rounds = found->roundsLeft;
+        removeCondition(id);
+        conditions.push_back({id, rounds, value});
+        addConditionModifiers(stats, *rules.condition(id), value);
+    }
+    return ended;
 }
 
 void Character::endRound()

@@ -104,6 +104,23 @@ Mount default assets in `FileSystem`, then a skin folder or `.yoreskin` zip. Lat
 
 Healing is ruleset data, so each game picks its own style. `rests` lists named rests (`short`, `long`…) with a per-adventure limit (0 = unlimited) and a `Recovery`: `none`, `full`, `fraction` of max HP, `flat` HP, or `hitDice` (that many dice, 0 = one per level, each plus `hitDieAbility`; sides from `hitDieByClass`, else `defaultHitDie`). `reviveDowned` lets a recovery lift characters at 0 HP. `afterVictory` heals the winners and `reviveAfterVictory` gets downed winners up with that much HP. `Character::recover(rules, recovery, random, &detail)` applies one and returns the HP gained. The modern preset has 2 hit-dice short rests and 1 full long rest per adventure and revives at 1 HP after a win; the classic preset has unlimited one-die rests and no revive.
 
+Conditions are data too. A `ConditionDefinition` is one JSON object, either in a ruleset's `conditions` list or in a file of its own: `Ruleset::loadConditions(files, folder)` reads every `<id>.json` in a folder, replaces definitions with the same id, and changes nothing if any file fails (the error names it).
+
+| Field | Meaning |
+|---|---|
+| `id`, `name`, `description` | Only `id` is required; a file's name must match it. |
+| `modifiers` | `stat`, `op` (`add`, `multiply`, `override`) and `value`, applied while the condition lasts. |
+| `advantageOnAttacks`, `disadvantageOnAttacks` | Forces the attack roll. |
+| `flags` | Names the game asks about with `Character::hasFlag`. `Encounter` honours `cantAct` (no actions, bonus action or reaction that turn) and `cantMove` (no movement); any other name is the game's own. |
+| `duration` | Rounds it lasts when applied without one; -1 (the default) until something ends it. |
+| `stacking` | What applying it again does: `refresh` (the new duration stands; the default), `longest` (the longer one stays) or `value` (values add up to `maxValue`). |
+| `maxValue`, `perValue`, `decay` | For `value` stacking: the cap, whether additive modifiers are multiplied by the value, and how much the value drops at the end of each round (at 0 the condition ends). |
+| `ends` | Events that end it: `turnStart`, `turnEnd`, `attack`, `damage`, `healed`, `move`, `rest`, `fightStart`, `fightEnd`. |
+| `save` | `ability` and `dc`: a save rolled at the end of each round that ends it on a success. |
+| `removes` | Conditions taken off when this one is applied. |
+
+`Character::addCondition(rules, id, rounds, value)` applies one (leave `rounds` out for the definition's duration), `conditionValue` and `hasFlag` read them, `conditionEvent(rules, event)` ends everything that listens for an event and returns the ids, and `endRound(rules, &random)` counts durations down, applies decay and rolls saves. `Encounter` raises `turnStart`, `turnEnd`, `attack` (after the roll) and `damage` itself, runs `endRound` when a round ends and logs each condition that ends; the game raises the rest. A condition the ruleset does not define is still tracked by id, with nothing attached. Unknown events, stacking names, saves with an ability the ruleset lacks and `removes` naming a missing condition all fail validation.
+
 `Character` includes inventory, equipment, resources, conditions, HP/temp HP, checks and saves. `Encounter` handles initiative, turns, action/movement budgets, attacks, damage and condition durations. Empty encounters and negative movement requests are rejected. Which actions are legal, and the UI flow around them, remain client responsibilities.
 
 ## Text and languages

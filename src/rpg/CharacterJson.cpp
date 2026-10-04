@@ -94,7 +94,7 @@ std::string Character::toJson() const
 
     json conditions_ = json::array();
     for (const ActiveCondition& c : conditions)
-        conditions_.push_back({{"id", c.id}, {"roundsLeft", c.roundsLeft}});
+        conditions_.push_back({{"id", c.id}, {"roundsLeft", c.roundsLeft}, {"value", c.value}});
     j["conditions"] = conditions_;
 
     return j.dump(2);
@@ -169,7 +169,7 @@ std::optional<Character> Character::fromJson(std::string_view text, std::string*
         if (j.contains("conditions"))
         {
             for (const json& cond : j["conditions"])
-                c.conditions.push_back({cond.value("id", ""), cond.value("roundsLeft", -1)});
+                c.conditions.push_back({cond.value("id", ""), cond.value("roundsLeft", -1), std::max(1, cond.value("value", 1))});
         }
         return c;
     }

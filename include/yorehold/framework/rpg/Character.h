@@ -39,6 +39,7 @@ struct ActiveCondition
 {
     std::string id;
     int roundsLeft = -1; // -1 = until removed
+    int value = 1;       // how strongly, for conditions that stack by value (Frightened 2)
 };
 
 // A character sheet. Holds raw data; anything derived (modifiers, AC, carry limit) is computed
@@ -95,10 +96,23 @@ public:
     bool equip(size_t inventoryIndex);
     void unequip(size_t inventoryIndex);
 
-    void addCondition(const Ruleset& rules, std::string_view id, int rounds = -1);
+    // Applies a condition for `rounds` (-1 = until something ends it; the default is the
+    // definition's own duration). One already there is refreshed, kept if it lasts longer, or
+    // raised by `value`, as its definition's stacking says. Conditions it `removes` come off.
+    static constexpr int definedDuration = -2;
+    void addCondition(const Ruleset& rules, std::string_view id, int rounds = definedDuration, int value = 1);
     void removeCondition(std::string_view id);
     bool hasCondition(std::string_view id) const;
-    // Counts down timed conditions; call once per round.
+    int conditionValue(std::string_view id) const; // 0 = doesn't have it
+    // One of its conditions carries this flag ("cantAct", "cantMove", or any the game defines).
+    bool hasFlag(const Ruleset& rules, std::string_view flag) const;
+    // Something happened to it ("damage", "turnStart", "rest"...; see conditionEvents): every
+    // condition that ends on that comes off. Returns their ids.
+    std::vector<std::string> conditionEvent(const Ruleset& rules, std::string_view event);
+    // Call once per round: counts down timed conditions, lets values decay and, given dice, rolls
+    // the saves that end conditions. Returns the ids that ended.
+    std::vector<std::string> endRound(const Ruleset& rules, Random* random = nullptr);
+    // Counts down timed conditions only, for sheets used without a ruleset.
     void endRound();
 
     float carriedWeight() const;

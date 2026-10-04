@@ -10,6 +10,8 @@
 namespace yh
 {
 
+class FileSystem;
+
 struct AbilityDefinition
 {
     std::string id;   // "str"
@@ -23,15 +25,51 @@ struct SkillDefinition
     std::string ability; // ability id it uses
 };
 
-// A named state like Poisoned or Blessed, and what it does to stats while it lasts.
+// A named state like Poisoned or Blessed: what it does to stats while it lasts, what it stops the
+// creature doing, how long it lasts and what ends it. One JSON object each, in a ruleset's
+// `conditions` list or a file of its own (see Ruleset::loadConditions).
 struct ConditionDefinition
 {
+    // What applying it again does to one already there.
+    enum class Stacking
+    {
+        Refresh, // the new duration replaces the old
+        Longest, // whichever lasts longer stays
+        Value,   // values add up to `maxValue` (Frightened 1 + 1 = Frightened 2)
+    };
+
     std::string id;
     std::string name;
     std::string description;
     std::vector<Modifier> modifiers;
     bool disadvantageOnAttacks = false;
     bool advantageOnAttacks = false;
+
+    // Named switches the game or the encounter asks about with Character::hasFlag. An encounter
+    // honours "cantAct" (no actions or reactions) and "cantMove" (no movement); the rest are the game's.
+    std::vector<std::string> flags;
+    int duration = -1; // rounds it lasts when applied without one (-1 = until something ends it)
+    Stacking stacking = Stacking::Refresh;
+    int maxValue = 1;      // highest value it stacks to (Stacking::Value)
+    bool perValue = false; // additive modifiers are multiplied by the value
+    int decay = 0;         // the value drops by this at the end of each round; at 0 the condition ends
+    // Events that end it (see conditionEvents): "damage", "attack", "turnStart", "rest"...
+    std::vector<std::string> ends;
+    // A save at the end of each round that ends it on a success. No ability = no save.
+    std::string saveAbility;
+    int saveDc = 10;
+    std::vector<std::string> removes; // conditions taken off when this one is applied (Dead removes Dying)
+
+    bool hasFlag(std::string_view flag) const;
+    bool endsOn(std::string_view event) const;
+    std::string toJson() const;
+    static std::optional<ConditionDefinition> fromJson(std::string_view json, std::string* error = nullptr);
+};
+
+// The events a condition's `ends` may name. An encounter raises turnStart, turnEnd, attack and
+// damage itself; the game raises the others (and may raise any of them) with Character::conditionEvent.
+inline constexpr const char* conditionEvents[] = {
+    "turnStart", "turnEnd", "attack", "damage", "healed", "move", "rest", "fightStart", "fightEnd",
 };
 
 // How much HP a rest or a win gives back. Several styles, so each ruleset picks its own.
@@ -112,6 +150,9 @@ struct Ruleset
     int hitDie(std::string_view characterClass) const;
     std::string toJson() const;
     static std::optional<Ruleset> fromJson(std::string_view json, std::string* error = nullptr);
+    // Adds every `folder`/<id>.json as a condition, replacing any with the same id. The file name
+    // is the id. All-or-nothing: on an error nothing changes and `error` names the file.
+    bool loadConditions(const FileSystem& files, std::string_view folder, std::string* error = nullptr);
 
     // Built-in starting points. Both are written from scratch (game mechanics only, no copied text).
     static Ruleset classic(); // old-school: six abilities, classic modifier table, no skills or proficiency

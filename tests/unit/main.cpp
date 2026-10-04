@@ -2,6 +2,7 @@
 #include "ImageTests.h"
 #include "DialogueTests.h"
 #include "QuestTests.h"
+#include "ConditionTests.h"
 #include "CameraControlTests.h"
 #include "CutsceneTests.h"
 
@@ -1465,6 +1466,7 @@ int main()
         {"Images", regression::images},
         {"Dialogue", regression::dialogues},
         {"Quests", regression::quests},
+        {"Conditions", regression::conditions},
         {"Camera controls", regression::cameraControls},
         {"Cutscenes", regression::cutscenes},
         {"Tweens", tweens},

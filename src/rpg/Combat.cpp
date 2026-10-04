@@ -91,14 +91,35 @@ void Encounter::start()
 void Encounter::beginTurn()
 {
     Combatant& c = order_[current_];
+    conditionsEnded(*c.character, c.character->conditionEvent(rules_, "turnStart"));
     c.budget = {rules_.actionsPerTurn, rules_.bonusActions, true, c.character->speedSquares(rules_)};
+    // Conditions can take the turn's actions or movement away.
+    if (c.character->hasFlag(rules_, "cantAct"))
+    {
+        c.budget.actions = 0;
+        c.budget.bonusAction = false;
+        c.budget.reaction = false;
+    }
+    if (c.character->hasFlag(rules_, "cantMove"))
+        c.budget.movementLeft = 0;
     addLog(c.character->name + "'s turn");
+}
+
+void Encounter::conditionsEnded(const Character& character, const std::vector<std::string>& ids)
+{
+    for (const std::string& id : ids)
+    {
+        const ConditionDefinition* def = rules_.condition(id);
+        addLog(character.name + " is no longer " + (def ? def->name : id));
+    }
 }
 
 void Encounter::nextTurn()
 {
     if (!started_ || finished())
         return;
+    if (round_ > 0 && order_[current_].standing())
+        conditionsEnded(*order_[current_].character, order_[current_].character->conditionEvent(rules_, "turnEnd"));
     // Twice round: a surprised combatant passes once and can then take the next turn that comes.
     for (size_t tries = 0; tries < order_.size() * 2 + 1; tries++)
     {
@@ -109,7 +130,7 @@ void Encounter::nextTurn()
             if (round_ > 0)
             {
                 for (Combatant& c : order_)
-                    c.character->endRound();
+                    conditionsEnded(*c.character, c.character->endRound(rules_, &random_));
                 round_++;
                 addLog("Round " + std::to_string(round_));
             }
@@ -141,6 +162,7 @@ AttackResult Encounter::attack(size_t targetIndex)
     attacker.budget.actions -= strikeCost();
 
     result.attackRoll = rollD20(self.attackModifier(rules_), self.attackAdvantage(rules_), random_);
+    const std::vector<std::string> afterAttack = self.conditionEvent(rules_, "attack"); // they still count for this roll
     result.critical = result.attackRoll.natural20();
     const int ac = target.armorClass(rules_);
     result.hit = !result.attackRoll.natural1() && (result.critical || result.attackRoll.total >= ac);
@@ -149,6 +171,7 @@ AttackResult Encounter::attack(size_t targetIndex)
     if (!result.hit)
     {
         addLog(line + " - miss");
+        conditionsEnded(self, afterAttack);
         return result;
     }
 
@@ -169,6 +192,8 @@ AttackResult Encounter::attack(size_t targetIndex)
     if (result.targetDropped)
         line += ". " + target.name + " goes down!";
     addLog(line);
+    conditionsEnded(self, afterAttack);
+    conditionsEnded(target, target.conditionEvent(rules_, "damage"));
     return result;
 }
 

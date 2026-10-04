@@ -66,14 +66,7 @@ std::string Ruleset::toJson() const
     for (const auto& a : abilities) j["abilities"].push_back({{"id", a.id}, {"name", a.name}});
     for (const auto& s : skills) j["skills"].push_back({{"id", s.id}, {"name", s.name}, {"ability", s.ability}});
     for (const auto& c : conditions)
-    {
-        J modifiers = J::array();
-        for (const auto& m : c.modifiers)
-            modifiers.push_back({{"stat", m.stat}, {"op", m.op == Modifier::Op::Add ? "add" : m.op == Modifier::Op::Multiply ? "multiply" : "override"},
-                {"value", m.value}, {"source", m.source}});
-        j["conditions"].push_back({{"id", c.id}, {"name", c.name}, {"description", c.description},
-            {"advantageOnAttacks", c.advantageOnAttacks}, {"disadvantageOnAttacks", c.disadvantageOnAttacks}, {"modifiers", modifiers}});
-    }
+        j["conditions"].push_back(J::parse(c.toJson()));
     return j.dump();
 }
 
@@ -129,24 +122,17 @@ std::optional<Ruleset> Ruleset::fromJson(std::string_view json, std::string* err
         ids.clear();
         for (const auto& c : j.value("conditions", nlohmann::json::array()))
         {
-            ConditionDefinition def;
-            def.id = c.at("id").get<std::string>(); def.name = c.at("name").get<std::string>();
-            def.description = c.value("description", std::string{});
-            def.advantageOnAttacks = c.value("advantageOnAttacks", false);
-            def.disadvantageOnAttacks = c.value("disadvantageOnAttacks", false);
-            if (def.id.empty() || !ids.insert(def.id).second) throw std::invalid_argument("Duplicate/empty condition id");
-            for (const auto& m : c.value("modifiers", nlohmann::json::array()))
-            {
-                Modifier mod;
-                mod.stat = m.at("stat").get<std::string>(); mod.value = m.at("value").get<float>();
-                mod.source = m.value("source", def.id);
-                const auto op = m.value("op", std::string("add"));
-                if (mod.stat.empty() || !std::isfinite(mod.value) || (op != "add" && op != "multiply" && op != "override"))
-                    throw std::invalid_argument("Invalid condition modifier");
-                mod.op = op == "add" ? Modifier::Op::Add : op == "multiply" ? Modifier::Op::Multiply : Modifier::Op::Override;
-                def.modifiers.push_back(std::move(mod));
-            }
-            r.conditions.push_back(std::move(def));
+            std::string problem;
+            std::optional<ConditionDefinition> def = ConditionDefinition::fromJson(c.dump(), &problem);
+            if (!def) throw std::invalid_argument(problem);
+            if (!ids.insert(def->id).second) throw std::invalid_argument("Duplicate condition id");
+            r.conditions.push_back(std::move(*def));
+        }
+        for (const ConditionDefinition& c : r.conditions)
+        {
+            if (!c.saveAbility.empty() && !r.ability(c.saveAbility)) throw std::invalid_argument("Condition " + c.id + " saves with an unknown ability");
+            for (const std::string& other : c.removes)
+                if (!r.condition(other)) throw std::invalid_argument("Condition " + c.id + " removes an unknown condition");
         }
         ids.clear();
         for (const auto& rest : j.value("rests", nlohmann::json::array()))
