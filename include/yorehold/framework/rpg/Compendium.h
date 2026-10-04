@@ -5,6 +5,7 @@
 #include "yorehold/framework/rpg/CharacterChoices.h"
 #include "yorehold/framework/rpg/CharacterOptions.h"
 #include "yorehold/framework/rpg/Loot.h"
+#include "yorehold/framework/rpg/Spell.h"
 #include "yorehold/framework/rpg/Tactics.h"
 
 #include <map>
@@ -34,6 +35,8 @@ struct ClassDefinition
     std::string dcAbility;
     std::map<std::string, Resource> resources;
     std::vector<std::string> items; // item ids, equipped in order where a slot is free
+    // The class's spell list: spell ids by spell level (0 = cantrips). JSON: "spells": {"0": [...], "1": [...]}.
+    std::map<int, std::vector<std::string>> spells;
     // Row n-1 is what reaching level n in this class brings. Empty for classes written before
     // level tables: their levels add HP only, and feat and skill picks are not limited.
     std::vector<ClassLevel> levels;
@@ -90,6 +93,7 @@ public:
     std::map<std::string, RaceDefinition> races;
     std::map<std::string, BackgroundDefinition> backgrounds;
     std::map<std::string, FeatDefinition> feats;
+    std::map<std::string, SpellDefinition> spells;
 
     Compendium();
     AiProfile::Lookup aiLookup() const; // valid while this compendium is alive and unchanged
@@ -100,10 +104,11 @@ public:
     // error nothing is added and `error` names the file. Items are checked first, so classes and
     // creatures may only list items that exist (here or loaded before).
     bool load(const FileSystem& files, std::string_view folder, std::string* error = nullptr);
-    // Reads `folder`/feats, /races and /backgrounds: a ruleset's player options, kept apart from
-    // load() so a chapter's own folder can't add them. Call after load(), since backgrounds list
-    // items. All-or-nothing, and every feat a race or background gives, and every race or class a
-    // feat requires, must exist.
+    // Reads `folder`/feats, /races, /backgrounds and /spells: a ruleset's player options, kept
+    // apart from load() so a chapter's own folder can't add them. Call after load(), since
+    // backgrounds list items and classes list spells. All-or-nothing, and every feat a race or
+    // background gives, every race or class a feat requires, and every spell a class lists (at
+    // the level it is listed under) must exist.
     bool loadOptions(const FileSystem& files, std::string_view folder, std::string* error = nullptr);
 
     const Item* item(std::string_view id) const;
@@ -112,6 +117,7 @@ public:
     const RaceDefinition* race(std::string_view id) const;
     const BackgroundDefinition* background(std::string_view id) const;
     const FeatDefinition* feat(std::string_view id) const;
+    const SpellDefinition* spell(std::string_view id) const;
 
     // A first-level character of a class: rolled abilities, HP = hit die + CON + bonus, the
     // class's gear equipped. Returns nullopt for an unknown class.
@@ -122,6 +128,7 @@ public:
     // 1). The race and background change scores, add skills and give their feats; the race's
     // speed replaces the class's. Skill picks become trained skills; feat picks must meet their
     // requirements at the level they were taken. Other picks wait for the features that read them.
+    // The sheet's spells are its classes' cantrips plus every listed spell of a level it has slots for.
     // nullopt, with `error` filled, for choices that don't fit the ruleset or name a missing option.
     std::optional<Character> build(const Ruleset& rules, const CharacterChoices& choices, std::string* error = nullptr) const;
     // A creature from its stat block; `name` overrides the definition's (for "Snik the goblin").

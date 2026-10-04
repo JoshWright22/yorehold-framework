@@ -83,6 +83,8 @@ std::string Character::toJson() const
     for (const auto& [id, r] : resources)
         resources_[id] = {{"current", r.current}, {"max", r.max}};
     j["resources"] = resources_;
+    if (!spells.empty())
+        j["spells"] = spells;
 
     json items = json::array();
     for (const Item& item : inventory)
@@ -172,6 +174,11 @@ std::optional<Character> Character::fromJson(std::string_view text, std::string*
         {
             for (const auto& [id, r] : j["resources"].items())
                 c.resources[id] = {r.value("current", 0), r.value("max", 0)};
+        }
+        if (j.contains("spells"))
+        {
+            c.spells = j.at("spells").get<std::vector<std::string>>();
+            if (c.spells.size() > 1000) throw std::invalid_argument("Too many spells on a sheet");
         }
         if (j.contains("inventory"))
         {

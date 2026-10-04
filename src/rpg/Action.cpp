@@ -7,6 +7,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <initializer_list>
 #include <stdexcept>
 
@@ -54,7 +55,7 @@ std::vector<std::string> names(const json& j, const std::string& path, const cha
 ActionDefinition parse(const json& j)
 {
     if (!j.is_object()) fail("action", "is a JSON object");
-    onlyFields(j, "", {"id", "name", "description", "order", "cost", "endsTurn", "general", "readies", "requires", "target", "log", "save", "effects"});
+    onlyFields(j, "", {"id", "name", "description", "order", "cost", "endsTurn", "general", "readies", "requires", "target", "area", "log", "save", "effects"});
     ActionDefinition def;
     def.id = text(j, "id", "", 64);
     if (def.id.empty()) fail("id", "is needed, 1 to 64 characters");
@@ -114,8 +115,9 @@ ActionDefinition parse(const json& j)
             fail("target.downed", "is true or false");
         def.allowsDowned = target.value("downed", false);
         const std::string kind = target.value("kind", json("self")).is_string() ? target.value("kind", std::string("self")) : std::string();
-        if (kind != "self" && kind != "creature") fail("target.kind", "is \"self\" or \"creature\"");
-        def.target = kind == "self" ? ActionDefinition::Target::Self : ActionDefinition::Target::Creature;
+        if (kind != "self" && kind != "creature" && kind != "point") fail("target.kind", "is \"self\", \"creature\" or \"point\"");
+        def.target = kind == "self" ? ActionDefinition::Target::Self
+            : kind == "creature" ? ActionDefinition::Target::Creature : ActionDefinition::Target::Point;
         const std::string side = target.value("side", json("enemy")).is_string() ? target.value("side", std::string("enemy")) : std::string();
         if (side != "enemy" && side != "ally" && side != "any") fail("target.side", "is \"enemy\", \"ally\" or \"any\"");
         def.side = side == "enemy" ? ActionDefinition::Side::Enemy : side == "ally" ? ActionDefinition::Side::Ally : ActionDefinition::Side::Any;
@@ -125,9 +127,41 @@ ActionDefinition parse(const json& j)
                 fail("target.range", "is a number of squares from 1 to 1000");
             def.range = target.at("range").get<int>();
         }
-        if (def.target == ActionDefinition::Target::Self && (target.contains("side") || target.contains("range") || target.contains("downed")))
-            fail("target", "side, range and downed are for a creature target");
+        // An area around the doer still says whose side it lands on.
+        if (def.target == ActionDefinition::Target::Self && (target.contains("range") || ((target.contains("side") || target.contains("downed")) && !j.contains("area"))))
+            fail("target", "side, range and downed are for a creature, a point or an area");
     }
+
+    if (j.contains("area"))
+    {
+        const json& area = j.at("area");
+        if (!area.is_object()) fail("area", "is an object with a shape and a size");
+        onlyFields(area, "area.", {"shape", "size", "width", "angle"});
+        const std::string shape = area.contains("shape") && area.at("shape").is_string() ? area.at("shape").get<std::string>() : std::string();
+        ActionArea made;
+        if (shape == "burst") made.shape = TemplateShape::Circle;
+        else if (shape == "cone") made.shape = TemplateShape::Cone;
+        else if (shape == "line") made.shape = TemplateShape::Line;
+        else if (shape == "square") made.shape = TemplateShape::Square;
+        else fail("area.shape", "is \"burst\", \"cone\", \"line\" or \"square\"");
+        auto squares = [&](const char* key, float fallback, float low, float high, const char* what) {
+            if (!area.contains(key)) return fallback;
+            if (!area.at(key).is_number() || !std::isfinite(area.at(key).get<float>()) || area.at(key).get<float>() < low || area.at(key).get<float>() > high)
+                fail(std::string("area.") + key, what);
+            return area.at(key).get<float>();
+        };
+        if (!area.contains("size")) fail("area.size", "is needed");
+        made.size = squares("size", 1, 0.5f, 100, "is a number of squares from 0.5 to 100");
+        made.width = squares("width", 0, 0.5f, 100, "is a number of squares from 0.5 to 100");
+        made.angle = squares("angle", made.angle, 1, 360, "is a number of degrees from 1 to 360");
+        if (area.contains("width") && made.shape != TemplateShape::Line) fail("area.width", "is for a line");
+        if (area.contains("angle") && made.shape != TemplateShape::Cone) fail("area.angle", "is for a cone");
+        if (made.directed() && def.target == ActionDefinition::Target::Self)
+            fail("area.shape", "a cone or line needs a creature or point target to aim at");
+        def.area = made;
+    }
+    else if (def.target == ActionDefinition::Target::Point)
+        fail("area", "a point target needs an area");
 
     json effect = json::object();
     effect["effects"] = j.value("effects", json::array());
@@ -148,6 +182,20 @@ void sortActions(std::vector<ActionDefinition>& actions)
     });
 }
 
+}
+
+AreaTemplate ActionArea::place(const Grid& grid, Vec2 from, Vec2 aim) const
+{
+    AreaTemplate placed;
+    placed.shape = shape;
+    placed.size = size * grid.size();
+    placed.width = width * grid.size();
+    placed.angleDegrees = angle;
+    placed.origin = directed() ? from : aim;
+    const Vec2 toward = aim - from;
+    if (directed() && (toward.x != 0 || toward.y != 0))
+        placed.direction = toward;
+    return placed;
 }
 
 int ActionDefinition::costFor(const Character& character, const Ruleset& rules) const

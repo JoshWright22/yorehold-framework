@@ -450,6 +450,22 @@ void Character::addXp(const Ruleset& rules, int amount)
     level = std::max(level, rules.levelForXp(xp));
 }
 
+int Character::restoreResources(const std::vector<std::string>& names)
+{
+    int restored = 0;
+    for (auto& [id, resource] : resources)
+    {
+        const bool named = std::any_of(names.begin(), names.end(), [&id = id](const std::string& name) {
+            return name.ends_with('*') ? std::string_view(id).starts_with(std::string_view(name).substr(0, name.size() - 1)) : id == name;
+        });
+        if (!named || resource.current >= resource.max)
+            continue;
+        restored += resource.max - resource.current;
+        resource.current = resource.max;
+    }
+    return restored;
+}
+
 void Character::adoptBuild(const Character& built)
 {
     name = built.name;
@@ -472,6 +488,7 @@ void Character::adoptBuild(const Character& built)
     proficiencies = built.proficiencies;
     proficiencyRanks = built.proficiencyRanks;
     dcAbility = built.dcAbility;
+    spells = built.spells;
     for (const auto& [id, resource] : built.resources)
     {
         const auto live = resources.find(id);

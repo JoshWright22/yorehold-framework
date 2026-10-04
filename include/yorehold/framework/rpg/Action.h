@@ -1,5 +1,6 @@
 #pragma once
 
+#include "yorehold/framework/map/Templates.h"
 #include "yorehold/framework/rpg/Effect.h"
 
 #include <optional>
@@ -13,6 +14,20 @@ namespace yh
 
 class FileSystem;
 
+// The area an action covers, in squares, laid on the map as an AreaTemplate when it is aimed.
+struct ActionArea
+{
+    TemplateShape shape = TemplateShape::Circle; // JSON: "burst", "cone", "line", "square"
+    float size = 1;   // a burst's radius, a cone's or line's length, a square's side
+    float width = 0;  // lines only; 0 = one square
+    float angle = 53.13f; // cones only, in degrees
+
+    // Cones and lines start where the doer stands and point at the aim; bursts and squares are
+    // centred on the aim. Both points are in world units.
+    AreaTemplate place(const Grid& grid, Vec2 from, Vec2 aim) const;
+    bool directed() const { return shape == TemplateShape::Cone || shape == TemplateShape::Line; }
+};
+
 // Something a creature can do on its turn, as data: what it costs, what it needs, who it is aimed
 // at and what it does. One JSON object each, usually a file of its own (see loadActions).
 struct ActionDefinition
@@ -21,6 +36,7 @@ struct ActionDefinition
     {
         Self,     // nothing to aim: it is about whoever does it
         Creature, // one creature within `range`
+        Point,    // a square within `range` (or a direction, for a cone or line); needs an `area`
     };
     enum class Side { Any, Enemy, Ally };
 
@@ -45,6 +61,9 @@ struct ActionDefinition
     Side side = Side::Enemy; // who a creature target may be
     int range = 1;           // squares; 1 = next to it
     bool allowsDowned = false; // a creature target may be unconscious, but not dead or withdrawn
+    // Everyone of `side` inside it is who the effect lands on, instead of one target. With a self
+    // target a burst or square sits on the doer; with a creature target, on that creature.
+    std::optional<ActionArea> area;
 
     std::string log; // a line for the game's log when it is done; "{name}" is whoever does it
     Effect effect;

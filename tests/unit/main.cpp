@@ -6,6 +6,7 @@
 #include "EffectTests.h"
 #include "CombatTests.h"
 #include "PositioningTests.h"
+#include "SpellTests.h"
 #include "ProficiencyTests.h"
 #include "DeathTests.h"
 #include "ChoicesTests.h"
@@ -1478,6 +1479,7 @@ int main()
         {"Reactions", regression::reactions},
         {"Shared turns", regression::sharedTurns},
         {"Flanking and cover", regression::positioning},
+        {"Spells", regression::spells},
         {"Proficiency ranks", regression::proficiencies},
         {"Death saves", regression::deathSaves},
         {"Character choices", regression::characterChoices},

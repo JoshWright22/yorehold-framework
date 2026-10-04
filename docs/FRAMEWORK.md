@@ -348,7 +348,8 @@ An `ActionDefinition` is something a creature can do on its turn: one JSON objec
 | `endsTurn` | The turn is over once it is done. |
 | `general` | `true` (the default): every creature has it. Otherwise something has to grant it. |
 | `requires` | `flags` the doer must have, flags it must be `without`, and `resources` it must hold at least this much of. `meets(character, rules, &why)` checks them. |
-| `target` | `kind` `self` (the default) or `creature`; for a creature, `side` (`enemy`, the default, `ally` or `any`), `range` in squares (1 = next to it), and `downed` (default false) to allow unconscious targets. |
+| `target` | `kind` `self` (the default), `creature` or `point` (a square on the map; needs an `area`); for a creature or a point, `side` (`enemy`, the default, `ally` or `any`), `range` in squares (1 = next to it), and `downed` (default false) to allow unconscious targets. With an `area`, a `self` target may give `side` and `downed` too. |
+| `area` | Everyone of the target's `side` inside it is who the effect lands on. `shape` is `burst` (a circle of radius `size`), `cone` (`size` long, `angle` degrees wide, default 53.13), `line` (`size` long, `width` wide, default one square) or `square` (`size` across); sizes are in squares, 0.5 to 100. `ActionArea::place(grid, from, aim)` lays it on the map as an `AreaTemplate`: a cone or line starts at the doer and points at the aim, so it needs a creature or point target; a burst or square is centred on the aim (on the doer for a `self` target). |
 | `readies` | An action id recorded for a later reaction. The folder loader checks that it exists and neither readies another action nor ends the turn. |
 | `log` | A line for the game's log; `{name}` is whoever does it. |
 | `effects`, `save` | What it does, as an `Effect`. The effect is checked against the ruleset when the folder is loaded. |
@@ -423,6 +424,61 @@ compendium and merchant JSON preserve it, including on saved items absent from a
 The game checks the effect against its ruleset and supplies permissions, reach, dice and targets.
 `Character::removeItem` spends one unequipped unit and rebinds later equipment modifier sources
 when the last unit disappears. Failed removals leave the inventory unchanged.
+
+### Spells
+
+A `SpellDefinition` is an action plus what makes it a spell: one JSON object, a file of its own in
+a ruleset's `spells/` folder, read by `Compendium::loadOptions` with the other player options.
+
+```json
+{ "id": "flame-fan", "name": "Flame fan", "level": 1, "hands": 2,
+  "target": { "kind": "point", "side": "any" },
+  "area": { "shape": "cone", "size": 3 },
+  "save": { "ability": "dex", "dc": "caster" },
+  "effects": [ { "do": "damage", "dice": "2d6", "type": "fire", "onSave": "half",
+                 "scale": { "by": "slot", "dice": "1d6" } } ] }
+```
+
+| Field | Meaning |
+|---|---|
+| `level` | 0 (the default) is a cantrip and spends nothing; otherwise the level of the slot it needs, up to 20. |
+| `hands` | Hands the casting needs, 0 to 4 (default 1). |
+| `concentration` | Default false. The conditions and modifiers it leaves on creatures last only while the caster concentrates. |
+| `cost` | Actions, as a number. Left out, a spell costs one action per hand. |
+| the rest | The action fields `id`, `name`, `description`, `order` (default 500 + level), `target`, `area`, `save`, `effects`, `log`. A spell needs at least one effect step and takes no `general`, `endsTurn`, `readies` or `requires`. |
+
+A class file lists its spells by spell level, `"spells": { "0": ["spark"], "1": ["flame-fan"] }`.
+`loadOptions` refuses a list naming a spell that doesn't exist or sits under the wrong level.
+`Compendium::build` puts on the sheet (`Character::spells`, saved with it and replaced by
+`adoptBuild`) every listed cantrip plus every listed spell of a level the sheet has slots for.
+Slots are the resources `slots-1`, `slots-2`... from the class level tables.
+
+`SpellRules` is how a ruleset casts, an optional JSON object with every field optional:
+
+| Field | Meaning |
+|---|---|
+| `hands` | `free` (the default): the spell's hands must be empty (`Character::freeHands()`). `ignored`: hands only set the cost. |
+| `slotPrefix` | A slot of level N is the resource named this plus N. Default `slots-`. |
+| `upcast` | Default true: with no slot of its own level left, a spell spends the lowest higher one. |
+| `concentration.onDamage` | `save` (the default): damage forces a save and failing it ends the spell. `breaks`: any damage ends it. `ignored`. |
+| `concentration.ability`, `minimumDc`, `damageShare` | The save's ability (default `con`) and DC: the larger of `minimumDc` (10) and `damageShare` (0.5) of the damage, rounded down. |
+| `concentration.endsWhenDown` | Default true: dropping to 0 HP ends it. |
+
+Unknown fields are refused with the field named; `check(rules)` verifies the save's ability.
+`slotFor(caster, spell, rules, wanted)` gives the slot level a casting would spend (0 for a
+cantrip, empty if none), `canCast` adds the hands check with a short reason, and `spendSlot` takes
+the slot. A step's `scale` by `slot` reads `EffectContext::slot`.
+
+`Concentration` is what one caster is holding in place: `begin(spell, result)` collects the
+conditions and modifiers an effect run left on creatures, `end(sheets)` takes them off again and
+`tidy(sheets)` forgets the ones that ran out, stopping once none are left (`sheets` gives the
+game's sheet for a creature). It round-trips through
+JSON. `concentrationCheck(caster, rules, spellRules, damage, random)` makes the check for damage
+taken. The game keeps one `Concentration` per caster, ends it when another begins, and decides
+when checks are made.
+
+A rest may carry `"restores": ["slots-*", "focus"]`: resource names it refills, `*` for all and a
+trailing `*` for a family. `Character::restoreResources(names)` does it.
 
 ### Merchants
 

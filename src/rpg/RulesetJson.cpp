@@ -72,7 +72,10 @@ std::string Ruleset::toJson() const
         {"stableCondition", death.stableCondition}, {"deadCondition", death.deadCondition}};
     j["abilities"] = J::array(); j["skills"] = J::array(); j["conditions"] = J::array(); j["rests"] = J::array();
     for (const auto& r : rests)
+    {
         j["rests"].push_back({{"id", r.id}, {"name", r.name}, {"perAdventure", r.perAdventure}, {"recovery", recoveryToJson(r.recovery)}});
+        if (!r.restores.empty()) j["rests"].back()["restores"] = r.restores;
+    }
     j["afterVictory"] = recoveryToJson(afterVictory);
     j["reviveAfterVictory"] = reviveAfterVictory;
     j["defaultHitDie"] = defaultHitDie;
@@ -229,7 +232,10 @@ std::optional<Ruleset> Ruleset::fromJson(std::string_view json, std::string* err
         {
             RestDefinition def{rest.at("id").get<std::string>(), rest.value("name", std::string{}),
                 recoveryFromJson(rest.value("recovery", nlohmann::json::object())), rest.value("perAdventure", 0)};
-            if (def.id.empty() || !ids.insert(def.id).second || def.perAdventure < 0) throw std::invalid_argument("Invalid rest definition");
+            def.restores = rest.value("restores", std::vector<std::string>{});
+            const bool named = std::all_of(def.restores.begin(), def.restores.end(), [](const std::string& name) { return !name.empty() && name.size() <= 64; });
+            if (def.id.empty() || !ids.insert(def.id).second || def.perAdventure < 0 || !named || def.restores.size() > 100)
+                throw std::invalid_argument("Invalid rest definition");
             r.rests.push_back(std::move(def));
         }
         r.afterVictory = recoveryFromJson(j.value("afterVictory", nlohmann::json::object()));

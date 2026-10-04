@@ -278,6 +278,7 @@ private:
                     sheet->removeCondition(id);
                 sheet->addModifier(id, step.modifier, step.duration);
                 note(EffectEvent::Kind::Modifier, actor, step.modifier.stat, static_cast<int>(step.modifier.value));
+                result_.events.back().tracked = id;
             }
             break;
         case Kind::Move:

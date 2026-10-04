@@ -72,6 +72,7 @@ public:
     int hp = 0;
     int tempHp = 0;
     std::map<std::string, Resource> resources;
+    std::vector<std::string> spells; // spell ids it can cast, in the order they are listed
     std::vector<Item> inventory;
     int coins = 0; // in the game's smallest coin; they weigh nothing
     std::vector<ActiveCondition> conditions;
@@ -127,6 +128,7 @@ public:
     static constexpr int handCount = 2;
     static bool held(const Item& item) { return item.slot.ends_with("Hand"); }
     int handsInUse() const;
+    int freeHands() const { return handCount - handsInUse(); }
     bool equip(size_t inventoryIndex);
     void unequip(size_t inventoryIndex);
 
@@ -162,6 +164,10 @@ public:
     // still fit under the ruleset's limit (always, where it has none).
     int magicItems() const;
     bool roomForMagic(const Ruleset& rules, int more = 1) const;
+
+    // Refills resources by name: "*" is all of them, "slots-*" every one starting that way.
+    // Returns how many points came back.
+    int restoreResources(const std::vector<std::string>& names);
 
     void addXp(const Ruleset& rules, int amount); // levels up automatically
 

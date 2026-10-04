@@ -166,6 +166,20 @@ std::optional<ClassDefinition> Compendium::classFromJson(std::string_view text, 
         c.resources = resourcesFrom(j);
         if (c.dcAbility.size() > 64) throw std::invalid_argument("DC ability is too long");
         c.items = j.value("items", std::vector<std::string>{});
+        if (j.contains("spells"))
+        {
+            if (!j.at("spells").is_object()) throw std::invalid_argument("spells: maps a spell level to a list of spell ids");
+            for (const auto& [level, ids] : j.at("spells").items())
+            {
+                const bool digits = !level.empty() && level.size() <= 2 && std::all_of(level.begin(), level.end(), [](char ch) { return ch >= '0' && ch <= '9'; });
+                if (!digits || !ids.is_array()) throw std::invalid_argument("spells." + level + ": is a spell level with a list of spell ids");
+                for (const json& id : ids)
+                {
+                    if (!id.is_string() || !validId(id.get<std::string>())) throw std::invalid_argument("spells." + level + ": spell ids use a-z, 0-9, - and _");
+                    c.spells[std::stoi(level)].push_back(id.get<std::string>());
+                }
+            }
+        }
         if (j.contains("levels"))
         {
             std::string e;
@@ -246,6 +260,8 @@ std::string Compendium::classToJson(const ClassDefinition& c)
         {"darkvision", c.darkvision}, {"bonusHp", c.bonusHp}, {"proficiencies", c.proficiencies}, {"items", c.items},
         {"proficiencyRanks", c.proficiencyRanks}, {"dcAbility", c.dcAbility}, {"resources", resourcesJson(c.resources)}};
     if (!c.levels.empty()) j["levels"] = json::parse(classLevelsToJson(c.levels));
+    for (const auto& [level, ids] : c.spells)
+        j["spells"][std::to_string(level)] = ids;
     return j.dump(2);
 }
 
@@ -434,6 +450,17 @@ bool Compendium::loadOptions(const FileSystem& files, std::string_view folder, s
     if (!each("feats", read(featFromJson, next.feats)) || !each("races", read(raceFromJson, next.races))
         || !each("backgrounds", read(backgroundFromJson, next.backgrounds)))
         return false;
+    const bool spellsRead = each("spells", [&](const std::string& text, const std::string& stem) -> std::string {
+        std::string e;
+        std::optional<SpellDefinition> spell = SpellDefinition::fromJson(text, &e);
+        if (!spell) return e;
+        if (spell->id() != stem) return "id \"" + spell->id() + "\" doesn't match the file name";
+        if (!validId(stem)) return "Spell ids use a-z, 0-9, - and _";
+        next.spells[stem] = std::move(*spell);
+        return {};
+    });
+    if (!spellsRead)
+        return false;
 
     // Cross-references, now everything is in.
     auto problem = [&](const std::string& path, const std::string& what) {
@@ -457,6 +484,21 @@ bool Compendium::loadOptions(const FileSystem& files, std::string_view folder, s
         for (const std::string& item : background.items)
             if (!next.items.contains(item)) return problem("backgrounds/" + id + ".json", "items: no item \"" + item + "\"");
     }
+    // Class files sit with the shared content, so their paths are not under this folder. A ruleset
+    // with no spells at all simply has no casting: shared classes still load under it.
+    for (const auto& [id, definition] : next.spells.empty() ? std::map<std::string, ClassDefinition>{} : next.classes)
+        for (const auto& [level, ids] : definition.spells)
+            for (const std::string& spell : ids)
+            {
+                const auto found = next.spells.find(spell);
+                const std::string where = "classes/" + id + ".json: spells." + std::to_string(level) + ": ";
+                if (found == next.spells.end() || found->second.level != level)
+                {
+                    if (error) *error = where + (found == next.spells.end() ? "no spell \"" + spell + "\""
+                        : "\"" + spell + "\" is a level " + std::to_string(found->second.level) + " spell");
+                    return false;
+                }
+            }
     *this = std::move(next);
     return true;
 }
@@ -516,6 +558,12 @@ const FeatDefinition* Compendium::feat(std::string_view id) const
 {
     const auto found = feats.find(std::string(id));
     return found == feats.end() ? nullptr : &found->second;
+}
+
+const SpellDefinition* Compendium::spell(std::string_view id) const
+{
+    const auto found = spells.find(std::string(id));
+    return found == spells.end() ? nullptr : &found->second;
 }
 
 std::optional<Character> Compendium::makeCharacter(const Ruleset& rules, std::string_view classId, std::string name, Random& random) const
@@ -708,6 +756,20 @@ std::optional<Character> Compendium::build(const Ruleset& rules, const Character
             slots[slotLevel] = std::max(slots[slotLevel], count);
     for (const auto& [slotLevel, count] : slots)
         if (count > 0) c.resources["slots-" + std::to_string(slotLevel)] = {count, count};
+    // Spells: each class's cantrips, and what it lists at the levels the sheet has slots for.
+    int highestSlot = 0;
+    for (const auto& [slotLevel, count] : slots)
+        if (count > 0) highestSlot = std::max(highestSlot, slotLevel);
+    std::set<const ClassDefinition*> listed;
+    for (const ClassDefinition* definition : classes_)
+    {
+        if (!listed.insert(definition).second)
+            continue;
+        for (const auto& [spellLevel, ids] : definition->spells)
+            for (const std::string& id : ids)
+                if (spellLevel <= highestSlot && spells.contains(id) && std::find(c.spells.begin(), c.spells.end(), id) == c.spells.end())
+                    c.spells.push_back(id);
+    }
 
     // HP last, so race and feat changes to CON count.
     const int con = c.abilityModifier(rules, "con");

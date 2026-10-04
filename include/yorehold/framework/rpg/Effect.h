@@ -106,6 +106,7 @@ struct EffectEvent
     bool critical = false;
     bool dropped = false;  // the damage took them to 0
     std::string id;        // the damage type, condition, resource, flag, ability rolled...
+    std::string tracked;   // a modifier: the name removeCondition takes it off by
 };
 
 struct EffectResult

@@ -96,6 +96,8 @@ struct RestDefinition
     std::string name; // "Short rest"
     Recovery recovery;
     int perAdventure = 0; // 0 = unlimited
+    // Resources it refills (see Character::restoreResources): "*" for all, "slots-*" for a family.
+    std::vector<std::string> restores;
 };
 
 // How score -> modifier works.
