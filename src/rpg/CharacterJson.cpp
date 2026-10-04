@@ -5,6 +5,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <stdexcept>
 
 namespace yh
 {
@@ -62,6 +63,8 @@ std::string Character::toJson() const
     j["tempHp"] = tempHp;
     j["notes"] = notes;
     j["proficiencies"] = proficiencies;
+    j["proficiencyRanks"] = proficiencyRanks;
+    j["dcAbility"] = dcAbility;
 
     json stats_ = json::object();
     for (const auto& [stat, value] : stats.bases())
@@ -121,6 +124,7 @@ std::optional<Character> Character::fromJson(std::string_view text, std::string*
         c.ancestry = j.value("ancestry", "");
         c.characterClass = j.value("class", "");
         c.level = j.value("level", 1);
+        if (c.level < 1 || c.level > 1000) throw std::invalid_argument("Sheet level must be 1 to 1000");
         c.xp = j.value("xp", 0);
         c.hitDie = j.value("hitDie", "1d8");
         c.hp = j.value("hp", 0);
@@ -128,6 +132,16 @@ std::optional<Character> Character::fromJson(std::string_view text, std::string*
         c.notes = j.value("notes", "");
         if (j.contains("proficiencies"))
             c.proficiencies = j["proficiencies"].get<std::set<std::string>>();
+        c.dcAbility = j.value("dcAbility", std::string{});
+        if (c.dcAbility.size() > 64) throw std::invalid_argument("DC ability is too long");
+        if (j.contains("proficiencyRanks"))
+        {
+            const auto& ranks = j.at("proficiencyRanks");
+            if (!ranks.is_object() || ranks.size() > 1000) throw std::invalid_argument("Proficiency ranks must be an object");
+            c.proficiencyRanks = ranks.get<std::map<std::string, std::string>>();
+            for (const auto& [target, rank] : c.proficiencyRanks)
+                if (target.empty() || target.size() > 64 || rank.empty() || rank.size() > 64) throw std::invalid_argument("Invalid proficiency choice");
+        }
         if (j.contains("stats"))
         {
             for (const auto& [stat, value] : j["stats"].items())
@@ -173,7 +187,7 @@ std::optional<Character> Character::fromJson(std::string_view text, std::string*
         }
         return c;
     }
-    catch (const json::exception& e)
+    catch (const std::exception& e)
     {
         if (error)
             *error = e.what();

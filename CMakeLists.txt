@@ -216,6 +216,7 @@ if(YOREHOLD_FRAMEWORK_UNIT_TESTS AND NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQ
         tests/unit/EffectTests.cpp
         tests/unit/CombatTests.cpp
         tests/unit/PositioningTests.cpp
+        tests/unit/ProficiencyTests.cpp
         tests/unit/CameraControlTests.cpp
         tests/unit/CutsceneTests.cpp
     )

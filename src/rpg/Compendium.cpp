@@ -85,10 +85,21 @@ std::optional<T> parse(std::string_view text, std::string* error, Parse parseObj
     }
 }
 
+std::map<std::string, std::string> ranksFrom(const json& j)
+{
+    const auto ranks = j.value("proficiencyRanks", json::object());
+    if (!ranks.is_object() || ranks.size() > 1000) throw std::invalid_argument("Proficiency ranks must be an object");
+    auto choices = ranks.get<std::map<std::string, std::string>>();
+    for (const auto& [target, rank] : choices)
+        if (target.empty() || target.size() > 64 || rank.empty() || rank.size() > 64) throw std::invalid_argument("Invalid proficiency choice");
+    return choices;
+}
+
 int abilityAdjustedArmor(const Ruleset& rules, const Character& c, int armorClass)
 {
     // The ruleset adds an ability to AC; take it back off so the final AC is what the file says.
-    return armorClass - (rules.armorClassAbility.empty() ? 0 : c.abilityModifier(rules, rules.armorClassAbility));
+    return armorClass - (rules.armorClassAbility.empty() ? 0 : c.abilityModifier(rules, rules.armorClassAbility))
+        - (rules.proficiencyRanks.empty() ? 0 : c.proficiencyModifier(rules, "armor"));
 }
 
 }
@@ -110,6 +121,9 @@ std::optional<ClassDefinition> Compendium::classFromJson(std::string_view text, 
         c.darkvision = j.value("darkvision", c.darkvision);
         c.bonusHp = j.value("bonusHp", c.bonusHp);
         c.proficiencies = j.value("proficiencies", std::set<std::string>{});
+        c.proficiencyRanks = ranksFrom(j);
+        c.dcAbility = j.value("dcAbility", std::string{});
+        if (c.dcAbility.size() > 64) throw std::invalid_argument("DC ability is too long");
         c.items = j.value("items", std::vector<std::string>{});
         if (!validId(c.id)) throw std::invalid_argument("Class ids use a-z, 0-9, - and _");
         if (c.hitDie < 1 || c.hitDie > 100 || c.speed < 0 || c.speed > 1000 || c.bonusHp < 0 || c.bonusHp > 1000
@@ -127,11 +141,15 @@ std::optional<CreatureDefinition> Compendium::creatureFromJson(std::string_view 
         c.name = j.value("name", c.id);
         c.description = j.value("description", "");
         c.hp = j.value("hp", c.hp);
+        c.level = j.value("level", c.level);
         c.armorClass = j.value("armorClass", c.armorClass);
         c.speed = j.value("speed", c.speed);
         c.darkvision = j.value("darkvision", c.darkvision);
         c.abilities = j.value("abilities", std::map<std::string, int>{});
         c.proficiencies = j.value("proficiencies", std::set<std::string>{});
+        c.proficiencyRanks = ranksFrom(j);
+        c.dcAbility = j.value("dcAbility", std::string{});
+        if (c.dcAbility.size() > 64) throw std::invalid_argument("DC ability is too long");
         c.items = j.value("items", std::vector<std::string>{});
         if (j.contains("token"))
         {
@@ -146,7 +164,7 @@ std::optional<CreatureDefinition> Compendium::creatureFromJson(std::string_view 
             c.ai = j.at("ai").dump();
         }
         if (!validId(c.id)) throw std::invalid_argument("Creature ids use a-z, 0-9, - and _");
-        if (c.hp < 1 || c.hp > 100000 || c.armorClass < 0 || c.armorClass > 100 || c.speed < 0 || c.speed > 1000
+        if (c.level < 1 || c.level > 1000 || c.hp < 1 || c.hp > 100000 || c.armorClass < 0 || c.armorClass > 100 || c.speed < 0 || c.speed > 1000
             || c.darkvision < 0 || c.darkvision > 10000 || !std::isfinite(c.token.size) || c.token.size <= 0 || c.token.size > 10)
             throw std::invalid_argument("Bad creature numbers");
         return c;
@@ -166,16 +184,17 @@ std::string Compendium::itemToJson(const Item& item)
 std::string Compendium::classToJson(const ClassDefinition& c)
 {
     return json{{"id", c.id}, {"name", c.name}, {"description", c.description}, {"hitDie", c.hitDie}, {"speed", c.speed},
-        {"darkvision", c.darkvision}, {"bonusHp", c.bonusHp}, {"proficiencies", c.proficiencies}, {"items", c.items}}.dump(2);
+        {"darkvision", c.darkvision}, {"bonusHp", c.bonusHp}, {"proficiencies", c.proficiencies}, {"items", c.items},
+        {"proficiencyRanks", c.proficiencyRanks}, {"dcAbility", c.dcAbility}}.dump(2);
 }
 
 std::string Compendium::creatureToJson(const CreatureDefinition& c)
 {
     const Color k = c.token.color;
-    return json{{"id", c.id}, {"name", c.name}, {"description", c.description}, {"hp", c.hp}, {"armorClass", c.armorClass},
+    return json{{"id", c.id}, {"name", c.name}, {"description", c.description}, {"hp", c.hp}, {"level", c.level}, {"armorClass", c.armorClass},
         {"speed", c.speed}, {"darkvision", c.darkvision}, {"abilities", c.abilities}, {"proficiencies", c.proficiencies}, {"items", c.items},
         {"token", {{"color", {k.r, k.g, k.b, k.a}}, {"size", c.token.size}, {"image", c.token.image}}},
-        {"ai", json::parse(c.ai, nullptr, false)}}.dump(2);
+        {"ai", json::parse(c.ai, nullptr, false)}, {"proficiencyRanks", c.proficiencyRanks}, {"dcAbility", c.dcAbility}}.dump(2);
 }
 
 bool Compendium::load(const FileSystem& files, std::string_view folder, std::string* error)
@@ -342,6 +361,9 @@ std::optional<Character> Compendium::makeCharacter(const Ruleset& rules, std::st
     c.stats.setBase("maxHp", static_cast<float>(hp));
     c.hp = hp;
     c.proficiencies = definition->proficiencies;
+    c.proficiencyRanks = definition->proficiencyRanks;
+    c.dcAbility = definition->dcAbility;
+    if (!c.checkProficiencyRanks(rules)) return std::nullopt;
     giveItems(c, definition->items);
     return c;
 }
@@ -375,6 +397,10 @@ std::optional<Character> Compendium::makeCreature(const Ruleset& rules, std::str
     c.stats.setBase("maxHp", static_cast<float>(definition->hp));
     c.hp = definition->hp;
     c.proficiencies = definition->proficiencies;
+    c.proficiencyRanks = definition->proficiencyRanks;
+    c.dcAbility = definition->dcAbility;
+    c.level = definition->level;
+    if (!c.checkProficiencyRanks(rules)) return std::nullopt;
     giveItems(c, definition->items);
     // Stat blocks give the final AC, so creatures' gear shouldn't carry AC modifiers.
     c.stats.setBase("ac", static_cast<float>(abilityAdjustedArmor(rules, c, definition->armorClass)));

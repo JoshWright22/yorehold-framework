@@ -44,6 +44,19 @@ int Ruleset::abilityModifier(int score) const
     return static_cast<int>(std::floor((score - 10) / 2.0));
 }
 
+const ProficiencyRankDefinition* Ruleset::proficiencyRank(std::string_view wanted) const
+{
+    for (const auto& rank : proficiencyRanks)
+        if (rank.id == wanted) return &rank;
+    return nullptr;
+}
+
+int Ruleset::proficiencyBonus(int level, std::string_view wanted) const
+{
+    const auto* rank = proficiencyRank(wanted);
+    return rank ? rank->bonus + (rank->addsLevel ? std::max(0, level) : 0) : 0;
+}
+
 int Ruleset::proficiencyBonus(int level) const
 {
     if (proficiencyByLevel.empty())

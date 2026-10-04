@@ -44,14 +44,51 @@ int Character::armorClass(const Ruleset& rules) const
 {
     // "ac" holds armour: its base is the ruleset's unarmoured AC, armour overrides it, shields add.
     const int dex = rules.armorClassAbility.empty() ? 0 : abilityModifier(rules, rules.armorClassAbility);
-    return stats.integer("ac") + dex;
+    return stats.integer("ac") + dex + (rules.proficiencyRanks.empty() ? 0 : proficiencyModifier(rules, "armor"));
+}
+
+std::string Character::proficiencyRank(const Ruleset& rules, std::string_view target) const
+{
+    const auto explicitRank = proficiencyRanks.find(std::string(target));
+    if (explicitRank != proficiencyRanks.end()) return explicitRank->second;
+    return proficiencies.contains(std::string(target)) ? rules.proficientRank : rules.untrainedRank;
+}
+
+int Character::proficiencyModifier(const Ruleset& rules, std::string_view target) const
+{
+    if (rules.proficiencyRanks.empty())
+        return proficiencies.contains(std::string(target)) ? rules.proficiencyBonus(level) : 0;
+    return rules.proficiencyBonus(level, proficiencyRank(rules, target));
+}
+
+bool Character::checkProficiencyRanks(const Ruleset& rules, std::string* error) const
+{
+    if (error) error->clear();
+    // Explicit choices are retained but inactive under older table-based rulesets.
+    if (rules.proficiencyRanks.empty()) return true;
+    auto fail = [&](std::string reason) { if (error) *error = std::move(reason); return false; };
+    if (!dcAbility.empty() && !rules.ability(dcAbility)) return fail("Unknown DC ability: " + dcAbility);
+    for (const auto& [target, rank] : proficiencyRanks)
+    {
+        if (target != "weapons" && target != "armor" && target != "dc" && !rules.skill(target) && !rules.ability(target))
+            return fail("Unknown proficiency target: " + target);
+        if (!rules.proficiencyRank(rank)) return fail("Unknown proficiency rank: " + rank);
+    }
+    return true;
+}
+
+int Character::difficultyClass(const Ruleset& rules, std::string_view ability) const
+{
+    const std::string_view used = ability.empty() ? std::string_view(dcAbility) : ability;
+    const int modifier = rules.ability(used) ? abilityModifier(rules, used) : 0;
+    return rules.baseDc + modifier + proficiencyModifier(rules, "dc") + stats.integer("dc");
 }
 
 int Character::checkModifier(const Ruleset& rules, std::string_view abilityOrSkill) const
 {
     if (const SkillDefinition* skill = rules.skill(abilityOrSkill))
     {
-        const int proficient = proficiencies.contains(skill->id) ? rules.proficiencyBonus(level) : 0;
+        const int proficient = proficiencyModifier(rules, skill->id);
         return abilityModifier(rules, skill->ability) + proficient;
     }
     return abilityModifier(rules, abilityOrSkill);
@@ -59,7 +96,7 @@ int Character::checkModifier(const Ruleset& rules, std::string_view abilityOrSki
 
 int Character::saveModifier(const Ruleset& rules, std::string_view ability) const
 {
-    const int proficient = proficiencies.contains(std::string(ability)) ? rules.proficiencyBonus(level) : 0;
+    const int proficient = proficiencyModifier(rules, ability);
     return abilityModifier(rules, ability) + proficient;
 }
 
@@ -98,7 +135,7 @@ int Character::attackModifier(const Ruleset& rules) const
 {
     const Item* held = weapon();
     const int ability = abilityModifier(rules, held ? held->attackAbility : "str");
-    const int proficient = proficiencies.contains("weapons") ? rules.proficiencyBonus(level) : 0;
+    const int proficient = proficiencyModifier(rules, "weapons");
     return ability + proficient + stats.integer("attack");
 }
 

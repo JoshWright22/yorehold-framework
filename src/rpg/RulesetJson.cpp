@@ -54,6 +54,10 @@ std::string Ruleset::toJson() const
         {"actionsPerTurn", actionsPerTurn}, {"bonusActions", bonusActions}, {"strikeCostsHands", strikeCostsHands}, {"sharedTurns", sharedTurns},
         {"feetPerSquare", feetPerSquare}, {"carryPerStrength", carryPerStrength},
         {"magicItemLimit", magicItemLimit}, {"passiveBase", passiveBase}};
+    j["proficiencyRanks"] = J::array();
+    for (const auto& rank : proficiencyRanks)
+        j["proficiencyRanks"].push_back({{"id", rank.id}, {"name", rank.name}, {"bonus", rank.bonus}, {"addsLevel", rank.addsLevel}});
+    j["proficientRank"] = proficientRank; j["untrainedRank"] = untrainedRank; j["baseDc"] = baseDc;
     j["abilities"] = J::array(); j["skills"] = J::array(); j["conditions"] = J::array(); j["rests"] = J::array();
     for (const auto& r : rests)
         j["rests"].push_back({{"id", r.id}, {"name", r.name}, {"perAdventure", r.perAdventure}, {"recovery", recoveryToJson(r.recovery)}});
@@ -99,6 +103,23 @@ std::optional<Ruleset> Ruleset::fromJson(std::string_view json, std::string* err
         if (r.magicItemLimit < 0 || r.magicItemLimit > 1000 || r.passiveBase < -1000 || r.passiveBase > 1000)
             throw std::invalid_argument("Invalid magicItemLimit or passiveBase");
         r.proficiencyByLevel = j.value("proficiencyByLevel", std::vector<int>{});
+        r.proficientRank = j.value("proficientRank", r.proficientRank);
+        r.untrainedRank = j.value("untrainedRank", r.untrainedRank);
+        r.baseDc = j.value("baseDc", r.baseDc);
+        std::set<std::string> rankIds;
+        const auto rankList = j.value("proficiencyRanks", nlohmann::json::array());
+        if (!rankList.is_array() || rankList.size() > 100) throw std::invalid_argument("proficiencyRanks is an array of at most 100 ranks");
+        for (const auto& entry : rankList)
+        {
+            ProficiencyRankDefinition rank;
+            rank.id = entry.at("id").get<std::string>(); rank.name = entry.value("name", rank.id);
+            rank.bonus = entry.value("bonus", 0); rank.addsLevel = entry.value("addsLevel", false);
+            if (rank.id.empty() || rank.id.size() > 64 || rank.name.size() > 64 || !rankIds.insert(rank.id).second
+                || rank.bonus < 0 || rank.bonus > 100) throw std::invalid_argument("Invalid proficiency rank");
+            r.proficiencyRanks.push_back(std::move(rank));
+        }
+        if ((!r.proficiencyRanks.empty() && (!r.proficiencyRank(r.proficientRank) || !r.proficiencyRank(r.untrainedRank)))
+            || r.baseDc < 0 || r.baseDc > 1000) throw std::invalid_argument("Invalid proficiency defaults or baseDc");
         r.xpForLevel = j.value("xpForLevel", std::vector<int>{});
         if (r.scoreMin > r.scoreMax || r.scoreMin < -100000 || r.scoreMax > 100000 || r.feetPerSquare <= 0 || r.carryPerStrength < 0
             || !std::is_sorted(r.xpForLevel.begin(), r.xpForLevel.end())

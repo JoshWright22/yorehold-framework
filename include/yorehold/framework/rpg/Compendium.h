@@ -26,6 +26,8 @@ struct ClassDefinition
     int darkvision = 0; // feet seen without light; becomes the "darkvision" stat, so items can add to it
     int bonusHp = 0;  // added to first-level HP
     std::set<std::string> proficiencies;
+    std::map<std::string, std::string> proficiencyRanks;
+    std::string dcAbility;
     std::vector<std::string> items; // item ids, equipped in order where a slot is free
 };
 
@@ -44,11 +46,14 @@ struct CreatureDefinition
     std::string name; // "Goblin"
     std::string description;
     int hp = 7;
+    int level = 1;
     int armorClass = 12; // final AC, whatever the armour and DEX
     int speed = 30;
     int darkvision = 0; // feet
     std::map<std::string, int> abilities; // "dex": 14
     std::set<std::string> proficiencies;
+    std::map<std::string, std::string> proficiencyRanks;
+    std::string dcAbility;
     std::vector<std::string> items;
     TokenLook token;
     // How it fights when the game plays it, as written in the file (JSON: a profile's name or an

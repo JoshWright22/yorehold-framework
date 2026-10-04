@@ -61,6 +61,8 @@ public:
     std::vector<Item> inventory;
     std::vector<ActiveCondition> conditions;
     std::set<std::string> proficiencies; // skill ids, ability ids (saves), "weapons", "armor"
+    std::map<std::string, std::string> proficiencyRanks; // same targets, plus "dc"; explicit ranks override the legacy list
+    std::string dcAbility; // empty: a DC with no ability bonus
     std::string notes;
 
     int abilityScore(std::string_view ability) const { return stats.integer(ability); }
@@ -73,6 +75,10 @@ public:
     // Ability or skill check: d20 + modifier (+ proficiency if proficient).
     int checkModifier(const Ruleset& rules, std::string_view abilityOrSkill) const;
     int saveModifier(const Ruleset& rules, std::string_view ability) const;
+    std::string proficiencyRank(const Ruleset& rules, std::string_view target) const;
+    int proficiencyModifier(const Ruleset& rules, std::string_view target) const;
+    bool checkProficiencyRanks(const Ruleset& rules, std::string* error = nullptr) const;
+    int difficultyClass(const Ruleset& rules, std::string_view ability = {}) const;
     int initiativeModifier(const Ruleset& rules) const;
     RollResult rollCheck(const Ruleset& rules, std::string_view abilityOrSkill, Advantage advantage, Random& random) const;
     RollResult rollSave(const Ruleset& rules, std::string_view ability, Advantage advantage, Random& random) const;

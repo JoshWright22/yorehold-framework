@@ -121,6 +121,28 @@ Conditions are data too. A `ConditionDefinition` is one JSON object, either in a
 
 `Character::addCondition(rules, id, rounds, value)` applies one (leave `rounds` out for the definition's duration), `conditionValue` and `hasFlag` read them, `conditionEvent(rules, event)` ends everything that listens for an event and returns the ids, and `endRound(rules, &random)` counts durations down, applies decay and rolls saves. `Encounter` raises `turnStart`, `turnEnd`, `attack` (after the roll) and `damage` itself, runs `endRound` when a round ends and logs each condition that ends; the game raises the rest. A condition the ruleset does not define is still tracked by id, with nothing attached. Unknown events, stacking names, saves with an ability the ruleset lacks and `removes` naming a missing condition all fail validation.
 
+### Proficiency ranks
+
+An optional `Ruleset::proficiencyRanks` array replaces table proficiency with named ranks:
+`{"id":"practised","name":"Practised","bonus":3,"addsLevel":true}`. Each rank contributes
+its bonus, plus the sheet's level when `addsLevel` is true. `proficientRank` and `untrainedRank`
+must name entries in the array. IDs are unique, bonuses are 0 to 100, and there are at most 100
+ranks. An absent or empty array keeps `proficiencyByLevel` and the modern/classic behaviour.
+
+`Character`, class and creature JSON accept a `proficiencyRanks` object mapping targets to rank
+IDs, and `dcAbility`. Targets are skill IDs, ability IDs for saves, `weapons`, `armor` and `dc`.
+Explicit choices override the old `proficiencies` list; absent choices use `proficientRank` for
+listed targets and `untrainedRank` otherwise. Ranked armour adds proficiency to AC. Raw ability
+checks and initiative do not add it. `difficultyClass(rules, ability)` returns `baseDc` (10 by
+default), the selected ability modifier, DC proficiency and the `dc` stat; an omitted ability
+uses `dcAbility`, and an empty one adds no ability modifier. Attacks and AC retain item and
+condition modifiers. Rank choices remain stored but inactive under table-based rulesets.
+
+Saved sheet levels must be 1 to 1000. `Character::checkProficiencyRanks(rules, &error)` validates the rule-specific references after
+reading a sheet. Compendium factories refuse invalid choices. Creature JSON also accepts `level`
+(1 by default, 1 to 1000). Its `armorClass` is final at that level: creation subtracts both the
+ability and ranked armour bonus from the stored base to prevent counting either twice.
+
 ### Effects
 
 An `Effect` is what a spell, an action, an item, a trap or a feature does: a list of steps, read from JSON and run by the framework. `Effect::fromJson` takes either the list itself or an object with `effects` and an optional `save`:

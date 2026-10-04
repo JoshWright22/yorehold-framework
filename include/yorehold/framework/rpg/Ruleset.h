@@ -106,6 +106,14 @@ enum class ModifierTable
 
 // The game system as data: which abilities, skills and conditions exist and how the numbers work.
 // Chapters pick a ruleset, so the framework never hard-codes one game's rules.
+struct ProficiencyRankDefinition
+{
+    std::string id;
+    std::string name;
+    int bonus = 0;
+    bool addsLevel = false;
+};
+
 struct Ruleset
 {
     std::string id;
@@ -121,6 +129,11 @@ struct Ruleset
     std::string initiativeAbility = "dex";
     // Index = level - 1. Empty means no proficiency bonus (classic games).
     std::vector<int> proficiencyByLevel;
+    // Empty keeps the older per-level table. Otherwise choices and legacy proficiency lists select a rank.
+    std::vector<ProficiencyRankDefinition> proficiencyRanks;
+    std::string proficientRank;
+    std::string untrainedRank;
+    int baseDc = 10;
     // Total XP needed to reach each level; index 0 = level 2.
     std::vector<int> xpForLevel;
     // A combat turn: free movement up to speed, plus this many actions.
@@ -143,6 +156,8 @@ struct Ruleset
 
     int abilityModifier(int score) const;
     int proficiencyBonus(int level) const;
+    const ProficiencyRankDefinition* proficiencyRank(std::string_view id) const;
+    int proficiencyBonus(int level, std::string_view rank) const;
     int levelForXp(int xp) const;
     const AbilityDefinition* ability(std::string_view wanted) const;
     const SkillDefinition* skill(std::string_view wanted) const;
