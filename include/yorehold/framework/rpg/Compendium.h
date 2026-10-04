@@ -4,6 +4,7 @@
 #include "yorehold/framework/rpg/Character.h"
 #include "yorehold/framework/rpg/CharacterChoices.h"
 #include "yorehold/framework/rpg/CharacterOptions.h"
+#include "yorehold/framework/rpg/Loot.h"
 #include "yorehold/framework/rpg/Tactics.h"
 
 #include <map>
@@ -64,6 +65,7 @@ struct CreatureDefinition
     bool deathSaves = false;
     std::map<std::string, Resource> resources;
     std::vector<std::string> items;
+    LootTable loot; // found on it besides what it carries
     TokenLook token;
     // How it fights when the game plays it, as written in the file (JSON: a profile's name or an
     // object of changes, see AiProfile). Kept as text so it can be resolved again whenever the
@@ -124,6 +126,10 @@ public:
     std::optional<Character> build(const Ruleset& rules, const CharacterChoices& choices, std::string* error = nullptr) const;
     // A creature from its stat block; `name` overrides the definition's (for "Snik the goblin").
     std::optional<Character> makeCreature(const Ruleset& rules, std::string_view creatureId, std::string name, Random& random) const;
+    // A loot table's ids must all be items here; `error` names the first that isn't.
+    bool checkLoot(const LootTable& table, std::string* error = nullptr) const;
+    // What a roll found, as items (ids that no longer exist are left out).
+    std::vector<Item> lootItems(const LootRoll& found) const;
 
     static std::optional<Item> itemFromJson(std::string_view json, std::string* error = nullptr);
     static std::optional<ClassDefinition> classFromJson(std::string_view json, std::string* error = nullptr);

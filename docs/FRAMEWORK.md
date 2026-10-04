@@ -361,7 +361,17 @@ Every effect step also accepts `ifFlag`: it only runs for subjects carrying that
 
 `Character::addModifier(id, modifier, rounds)` is the timed modifier on its own.
 
-`Character` includes inventory, equipment, resources, conditions, HP/temp HP, checks and saves. `equip` keeps one item per slot and two hands between the held slots (those ending in `Hand`): taking up an item whose `hands` aren't free puts other held items away, last-listed first. `Encounter` handles initiative, turns, action/movement budgets, attacks, damage and condition durations. Empty encounters and negative movement requests are rejected. Which actions are legal, and the UI flow around them, remain client responsibilities.
+`Character` includes inventory, coins, equipment, resources, conditions, HP/temp HP, checks and saves. `equip` keeps one item per slot and two hands between the held slots (those ending in `Hand`): taking up an item whose `hands` aren't free puts other held items away, last-listed first. `Encounter` handles initiative, turns, action/movement budgets, attacks, damage and condition durations. Empty encounters and negative movement requests are rejected. Which actions are legal, and the UI flow around them, remain client responsibilities.
+
+### Loot tables
+
+A creature file's optional `loot` says what is found on it besides the items it carries; clients use the same table for containers:
+
+```json
+"loot": { "coins": "2d6", "items": ["torch", { "item": "dagger", "chance": 0.25, "quantity": 2 }] }
+```
+
+`coins` is dice or a number, in the game's smallest coin. Each entry is an item id, or an object with `item`, `chance` (0 to 1, default 1) and `quantity` (1 to 1000, default 1). Unknown fields are refused with the field named, and `Compendium::load` refuses a table naming an item that doesn't exist. `rollLoot(table, random)` rolls the coins and then each entry in order (a certain entry takes no roll); `Compendium::lootItems` turns the result into items. A sheet's `coins` holds what a character has.
 
 ### Flanking and cover
 

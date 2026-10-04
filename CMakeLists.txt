@@ -154,6 +154,7 @@ add_library(yorehold-framework
     src/rpg/Dice.cpp
     src/rpg/Compendium.cpp
     src/rpg/Dialogue.cpp
+    src/rpg/Loot.cpp
     src/rpg/Effect.cpp
     src/rpg/EffectJson.cpp
     src/rpg/QuestJournal.cpp

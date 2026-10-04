@@ -184,6 +184,13 @@ std::optional<CreatureDefinition> Compendium::creatureFromJson(std::string_view 
         c.dcAbility = j.value("dcAbility", std::string{});
         if (c.dcAbility.size() > 64) throw std::invalid_argument("DC ability is too long");
         c.items = j.value("items", std::vector<std::string>{});
+        if (j.contains("loot"))
+        {
+            std::string e;
+            std::optional<LootTable> loot = LootTable::fromJson(j.at("loot").dump(), &e);
+            if (!loot) throw std::invalid_argument(e);
+            c.loot = std::move(*loot);
+        }
         if (j.contains("token"))
         {
             const json& t = j.at("token");
@@ -226,11 +233,37 @@ std::string Compendium::classToJson(const ClassDefinition& c)
 std::string Compendium::creatureToJson(const CreatureDefinition& c)
 {
     const Color k = c.token.color;
-    return json{{"id", c.id}, {"name", c.name}, {"description", c.description}, {"hp", c.hp}, {"level", c.level}, {"armorClass", c.armorClass},
+    json j{{"id", c.id}, {"name", c.name}, {"description", c.description}, {"hp", c.hp}, {"level", c.level}, {"armorClass", c.armorClass},
         {"speed", c.speed}, {"darkvision", c.darkvision}, {"abilities", c.abilities}, {"proficiencies", c.proficiencies}, {"items", c.items},
         {"token", {{"color", {k.r, k.g, k.b, k.a}}, {"size", c.token.size}, {"image", c.token.image}}},
         {"ai", json::parse(c.ai, nullptr, false)}, {"proficiencyRanks", c.proficiencyRanks}, {"dcAbility", c.dcAbility},
-        {"deathSaves", c.deathSaves}, {"resources", resourcesJson(c.resources)}}.dump(2);
+        {"deathSaves", c.deathSaves}, {"resources", resourcesJson(c.resources)}};
+    if (!c.loot.empty()) j["loot"] = json::parse(c.loot.toJson());
+    return j.dump(2);
+}
+
+bool Compendium::checkLoot(const LootTable& table, std::string* error) const
+{
+    for (const LootEntry& entry : table.items)
+        if (!items.contains(entry.item))
+        {
+            if (error) *error = "unknown item \"" + entry.item + "\" in loot";
+            return false;
+        }
+    return true;
+}
+
+std::vector<Item> Compendium::lootItems(const LootRoll& found) const
+{
+    std::vector<Item> made;
+    for (const auto& [id, quantity] : found.items)
+        if (const Item* definition = item(id))
+        {
+            made.push_back(*definition);
+            made.back().quantity = quantity;
+            made.back().equipped = false;
+        }
+    return made;
 }
 
 bool Compendium::load(const FileSystem& files, std::string_view folder, std::string* error)
@@ -335,6 +368,7 @@ bool Compendium::load(const FileSystem& files, std::string_view folder, std::str
         if (c->id != stem) return "id \"" + c->id + "\" doesn't match the file name";
         for (const std::string& id : c->items)
             if (!next.items.contains(id)) return "unknown item \"" + id + "\"";
+        if (!next.checkLoot(c->loot, &e)) return e;
         if (!AiProfile::fromJson(c->ai, &e, next.aiLookup())) return e;
         next.creatures[c->id] = std::move(*c);
         return {};

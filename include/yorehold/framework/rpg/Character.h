@@ -68,6 +68,7 @@ public:
     int tempHp = 0;
     std::map<std::string, Resource> resources;
     std::vector<Item> inventory;
+    int coins = 0; // in the game's smallest coin; they weigh nothing
     std::vector<ActiveCondition> conditions;
     std::set<std::string> proficiencies; // skill ids, ability ids (saves), "weapons", "armor"
     std::map<std::string, std::string> proficiencyRanks; // same targets, plus "dc"; explicit ranks override the legacy list

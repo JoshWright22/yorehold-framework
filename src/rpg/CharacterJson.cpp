@@ -95,6 +95,7 @@ std::string Character::toJson() const
         });
     }
     j["inventory"] = items;
+    j["coins"] = coins;
 
     json conditions_ = json::array();
     for (const ActiveCondition& c : conditions)
@@ -192,6 +193,8 @@ std::optional<Character> Character::fromJson(std::string_view text, std::string*
                 c.inventory.push_back(std::move(item));
             }
         }
+        c.coins = j.value("coins", 0);
+        if (c.coins < 0) throw std::invalid_argument("Coins can't be negative");
         if (j.contains("conditions"))
         {
             for (const json& cond : j["conditions"])

@@ -336,6 +336,39 @@ void hands()
     CHECK(c.equip(0) && c.handsInUse() == 2 && c.inventory[1].equipped);
 }
 
+void loot()
+{
+    std::string error;
+    const auto table = yh::LootTable::fromJson(
+        R"({"coins":"2d6","items":["sword",{"item":"sword","chance":0,"quantity":3},{"item":"sword","chance":1,"quantity":2}]})", &error);
+    CHECK(table && table->coins == "2d6" && table->items.size() == 3 && table->items[1].chance == 0);
+    if (!table) return;
+    yh::Random a(3), b(3);
+    const auto found = yh::rollLoot(*table, a);
+    CHECK(found.coins >= 2 && found.coins <= 12 && found.items.size() == 2 && found.items[1].second == 2);
+    CHECK(yh::rollLoot(*table, b).coins == found.coins);
+    const auto back = yh::LootTable::fromJson(table->toJson());
+    CHECK(back && back->toJson() == table->toJson());
+    CHECK(yh::LootTable::fromJson(R"({"coins":40})")->coins == "40" && yh::LootTable::fromJson("{}")->empty());
+    CHECK(!yh::LootTable::fromJson(R"({"coins":"lots"})", &error) && error.find("loot.coins") == 0);
+    CHECK(!yh::LootTable::fromJson(R"({"items":[{"item":"sword","chance":2}]})", &error) && error.find("loot.items[0].chance") == 0);
+    CHECK(!yh::LootTable::fromJson(R"({"gems":1})", &error) && error == "loot.gems: unknown field");
+
+    const auto compendium = classes();
+    CHECK(compendium.checkLoot(*table) && compendium.lootItems(found).size() == 2 && compendium.lootItems(found)[1].quantity == 2);
+    auto missing = *table;
+    missing.items.push_back({"gem", 1, 1});
+    CHECK(!compendium.checkLoot(missing, &error) && error.find("gem") != std::string::npos);
+
+    // Creature files carry a table, and sheets carry coins.
+    const auto creature = yh::Compendium::creatureFromJson(R"({"id":"rat","loot":{"coins":"1d4"}})", &error);
+    CHECK(creature && creature->loot.coins == "1d4"
+        && yh::Compendium::creatureFromJson(yh::Compendium::creatureToJson(*creature))->loot.coins == "1d4");
+    yh::Character rich;
+    rich.coins = 125;
+    CHECK(yh::Character::fromJson(rich.toJson())->coins == 125);
+}
+
 void scoreMethods()
 {
     auto rules = yh::Ruleset::modern();
@@ -383,6 +416,7 @@ void characterChoices()
     files();
     scoreMethods();
     hands();
+    loot();
     building();
     liveState();
     options();
