@@ -91,6 +91,8 @@ struct Ruleset
     bool strikeCostsHands = false;  // a Strike costs one action per hand the weapon needs
     int feetPerSquare = 5;
     int carryPerStrength = 15; // pounds per point of the first ability (strength)
+    int magicItemLimit = 0;    // magic items one character may carry (0 = no limit)
+    int passiveBase = 10;      // a passive score (what a check is rolled against) is this plus the modifier
 
     // Healing. Rests are offered by the client between fights; afterVictory heals the winners.
     std::vector<RestDefinition> rests;

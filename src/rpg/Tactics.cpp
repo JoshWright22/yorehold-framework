@@ -188,6 +188,7 @@ std::optional<AiProfile> AiProfile::fromJson(std::string_view text, std::string*
         p.fleeLeaderless = j.value("fleeLeaderless", p.fleeLeaderless);
         p.leader = j.value("leader", p.leader);
         p.escapeAt = j.value("escapeAt", p.escapeAt);
+        p.alarmReach = j.value("alarmReach", p.alarmReach);
         if (j.contains("onBreak"))
         {
             const json& on = j.at("onBreak");
@@ -220,7 +221,7 @@ std::optional<AiProfile> AiProfile::fromJson(std::string_view text, std::string*
             if (!j.at("settings").is_object()) throw std::invalid_argument("settings is an object");
             p.settings = j.at("settings").dump();
         }
-        for (const float value : {p.damage, p.finish, p.weak, p.isolated, p.pack, p.nearby, p.danger, p.random, p.fleeHp, p.fleeLosses, p.escapeAt})
+        for (const float value : {p.damage, p.finish, p.weak, p.isolated, p.pack, p.nearby, p.danger, p.random, p.fleeHp, p.fleeLosses, p.escapeAt, p.alarmReach})
             if (!std::isfinite(value) || value < 0 || value > 1000) throw std::invalid_argument("AI numbers are 0 to 1000");
         if (p.escapeAt < 1) throw std::invalid_argument("escapeAt is at least 1");
         if (p.base.empty() || p.base.size() > 64) throw std::invalid_argument("AI labels are 1 to 64 characters");
@@ -240,7 +241,7 @@ std::string AiProfile::toJson() const
         breaks[name] = weight;
     return json{{"base", "none"}, {"label", base}, {"damage", damage}, {"finish", finish}, {"weak", weak}, {"isolated", isolated},
         {"pack", pack}, {"nearby", nearby}, {"danger", danger}, {"random", random}, {"fleeHp", fleeHp}, {"fleeLosses", fleeLosses},
-        {"fleeLeaderless", fleeLeaderless}, {"leader", leader}, {"escapeAt", escapeAt}, {"onBreak", breaks},
+        {"fleeLeaderless", fleeLeaderless}, {"leader", leader}, {"escapeAt", escapeAt}, {"alarmReach", alarmReach}, {"onBreak", breaks},
         {"surrenderCornered", surrenderCornered}, {"model", model}, {"settings", json::parse(settings)}}.dump();
 }
 

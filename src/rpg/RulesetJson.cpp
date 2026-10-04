@@ -52,7 +52,8 @@ std::string Ruleset::toJson() const
         {"armorClassAbility", armorClassAbility}, {"initiativeAbility", initiativeAbility},
         {"proficiencyByLevel", proficiencyByLevel}, {"xpForLevel", xpForLevel},
         {"actionsPerTurn", actionsPerTurn}, {"bonusActions", bonusActions}, {"strikeCostsHands", strikeCostsHands},
-        {"feetPerSquare", feetPerSquare}, {"carryPerStrength", carryPerStrength}};
+        {"feetPerSquare", feetPerSquare}, {"carryPerStrength", carryPerStrength},
+        {"magicItemLimit", magicItemLimit}, {"passiveBase", passiveBase}};
     j["abilities"] = J::array(); j["skills"] = J::array(); j["conditions"] = J::array(); j["rests"] = J::array();
     for (const auto& r : rests)
         j["rests"].push_back({{"id", r.id}, {"name", r.name}, {"perAdventure", r.perAdventure}, {"recovery", recoveryToJson(r.recovery)}});
@@ -99,6 +100,10 @@ std::optional<Ruleset> Ruleset::fromJson(std::string_view json, std::string* err
         if (r.actionsPerTurn < 1 || r.actionsPerTurn > 10) throw std::invalid_argument("actionsPerTurn is 1 to 10");
         r.feetPerSquare = j.value("feetPerSquare", r.feetPerSquare);
         r.carryPerStrength = j.value("carryPerStrength", r.carryPerStrength);
+        r.magicItemLimit = j.value("magicItemLimit", r.magicItemLimit);
+        r.passiveBase = j.value("passiveBase", r.passiveBase);
+        if (r.magicItemLimit < 0 || r.magicItemLimit > 1000 || r.passiveBase < -1000 || r.passiveBase > 1000)
+            throw std::invalid_argument("Invalid magicItemLimit or passiveBase");
         r.proficiencyByLevel = j.value("proficiencyByLevel", std::vector<int>{});
         r.xpForLevel = j.value("xpForLevel", std::vector<int>{});
         if (r.scoreMin > r.scoreMax || r.scoreMin < -100000 || r.scoreMax > 100000 || r.feetPerSquare <= 0 || r.carryPerStrength < 0

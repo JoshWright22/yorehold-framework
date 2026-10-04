@@ -40,6 +40,7 @@ struct AiProfile
     bool fleeLeaderless = false; // once its side had a leader and none is left standing
     bool leader = false;         // counts as a leader for its allies
     float escapeAt = 8;          // squares of walking from the nearest foe at which it can get away
+    float alarmReach = 3;        // squares of walking from allies not yet fighting at which its shout brings them in
 
     // What it does once its morale breaks, picked by weight when it happens:
     //   flee       runs until it gets away (gone for good)

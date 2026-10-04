@@ -553,6 +553,18 @@ void rpg()
     const auto turns = yh::Ruleset::fromJson(rules.toJson());
     CHECK(turns && turns->actionsPerTurn == 2 && turns->strikeCostsHands && !turns->bonusActions);
     CHECK(!yh::Ruleset::fromJson(R"({"id":"x","name":"x","abilities":[{"id":"con","name":"Con"}],"actionsPerTurn":0})"));
+    // Numbers a game reads for itself: no magic item limit and passive scores from 10 unless the file says.
+    CHECK(rules.magicItemLimit == 0 && rules.passiveBase == 10);
+    const std::string bare = R"({"id":"x","name":"x","initiativeAbility":"","armorClassAbility":"","abilities":[{"id":"con","name":"Con"}])";
+    CHECK(yh::Ruleset::fromJson(bare + "}"));
+    const auto limits = yh::Ruleset::fromJson(bare + R"(,"magicItemLimit":3,"passiveBase":8})");
+    CHECK(limits && limits->magicItemLimit == 3 && limits->passiveBase == 8);
+    const auto limitsAgain = limits ? yh::Ruleset::fromJson(limits->toJson()) : std::nullopt;
+    CHECK(limitsAgain && limitsAgain->magicItemLimit == 3 && limitsAgain->passiveBase == 8);
+    CHECK(!yh::Ruleset::fromJson(bare + R"(,"magicItemLimit":-1})"));
+    const auto shouter = yh::AiProfile::fromJson(R"({"alarmReach": 5})");
+    CHECK(yh::AiProfile{}.alarmReach == 3 && shouter && shouter->alarmReach == 5);
+    CHECK(shouter && yh::AiProfile::fromJson(shouter->toJson())->alarmReach == 5);
 }
 
 // An open field: `self` can walk `speed` squares (twice that with a dash) and everyone else stands still.
