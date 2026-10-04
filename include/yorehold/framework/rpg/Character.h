@@ -73,6 +73,9 @@ public:
     int tempHp = 0;
     std::map<std::string, Resource> resources;
     std::vector<std::string> spells; // spell ids it can cast, in the order they are listed
+    std::vector<std::string> preparable; // spell ids this caster may prepare (empty = not a prepared caster)
+    int prepareLimit = 0; // maximum number of spells to prepare (0 = no limit / not a prepared caster)
+    std::vector<std::string> prepared; // currently prepared spell ids (for prepared casters)
     std::vector<Item> inventory;
     int coins = 0; // in the game's smallest coin; they weigh nothing
     std::vector<ActiveCondition> conditions;
@@ -168,6 +171,10 @@ public:
     // Refills resources by name: "*" is all of them, "slots-*" every one starting that way.
     // Returns how many points came back.
     int restoreResources(const std::vector<std::string>& names);
+
+    // Prepared caster: updates the prepared spells from a list of spell ids.
+    // Checks that they are in preparable and within the limit. `why` gets a short reason if not.
+    bool prepare(const std::vector<std::string>& ids, std::string* why = nullptr);
 
     void addXp(const Ruleset& rules, int amount); // levels up automatically
 

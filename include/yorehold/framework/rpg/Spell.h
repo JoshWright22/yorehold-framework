@@ -18,6 +18,7 @@ struct SpellDefinition
     int level = 0;  // 0 = a cantrip, which spends no slot
     int hands = 1;  // hands the casting needs; also its cost in actions unless the file gives a cost
     bool concentration = false; // what it leaves on creatures lasts only while the caster concentrates
+    std::vector<std::string> spends; // resource ids it costs in addition to slots (empty = none)
     ActionDefinition action;    // id, name, description, target, area, save and effects
     std::string json;           // as it was read, in canonical form (for content signatures)
 
@@ -52,6 +53,8 @@ struct SpellRules
     float damageShare = 0.5f; // ...this share of the damage taken, rounded down
     bool endsWhenDown = true; // dropping to 0 HP ends it
 
+    std::vector<std::string> prepareAfter; // rest ids after which prepared casters can re-choose their spells; empty = never (default)
+
     int concentrationDc(int damage) const;
     std::string toJson() const;
     // Unknown fields are refused with the field named.
@@ -66,6 +69,8 @@ struct SpellRules
 std::optional<int> slotFor(const Character& caster, const SpellDefinition& spell, const SpellRules& rules, int wanted = 0);
 // The caster has a slot for it and, where the rules ask, the hands free. `why` gets a short reason if not.
 bool canCast(const Character& caster, const SpellDefinition& spell, const SpellRules& rules, std::string* why = nullptr);
+// Spends a slot of that level and any custom resources the spell costs. Level 0 spends nothing.
+void spendCasting(Character& caster, const SpellDefinition& spell, const SpellRules& rules, int slot);
 // Takes one slot of that level off the sheet. Level 0 spends nothing. False if there was none.
 bool spendSlot(Character& caster, const SpellRules& rules, int slot);
 

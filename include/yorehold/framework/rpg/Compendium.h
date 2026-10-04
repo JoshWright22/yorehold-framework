@@ -37,6 +37,10 @@ struct ClassDefinition
     std::vector<std::string> items; // item ids, equipped in order where a slot is free
     // The class's spell list: spell ids by spell level (0 = cantrips). JSON: "spells": {"0": [...], "1": [...]}.
     std::map<int, std::vector<std::string>> spells;
+    // How the class casts: "prepared" or "spontaneous"; empty = no spellcasting.
+    std::string casting;
+    // For prepared casters, how many spells can be prepared at once.
+    int prepareLimit = 0;
     // Row n-1 is what reaching level n in this class brings. Empty for classes written before
     // level tables: their levels add HP only, and feat and skill picks are not limited.
     std::vector<ClassLevel> levels;

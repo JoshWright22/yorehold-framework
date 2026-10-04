@@ -49,7 +49,19 @@ std::optional<SpellDefinition> SpellDefinition::fromJson(std::string_view source
         spell.level = whole(j, "level", 0, 0, 20);
         spell.hands = whole(j, "hands", 1, 0, 4);
         spell.concentration = truth(j, "concentration", false);
-        for (const char* own : {"level", "hands", "concentration"})
+        if (j.contains("spends"))
+        {
+            const auto& spends = j.at("spends");
+            if (spends.is_array())
+                for (const auto& item : spends)
+                    if (item.is_string())
+                        spell.spends.push_back(item.get<std::string>());
+                    else
+                        throw std::invalid_argument("spends: is an array of resource names");
+            else
+                throw std::invalid_argument("spends: is an array of resource names or absent");
+        }
+        for (const char* own : {"level", "hands", "concentration", "spends"})
             j.erase(own);
         for (const char* refused : {"general", "endsTurn", "readies", "requires"})
             if (j.contains(refused)) throw std::invalid_argument(std::string(refused) + ": is not for a spell");
@@ -81,7 +93,9 @@ int SpellRules::concentrationDc(int damage) const
 
 std::string SpellRules::toJson() const
 {
+    json prep = prepareAfter.empty() ? json(nullptr) : json(prepareAfter);
     return json{{"hands", hands == Hands::Free ? "free" : "ignored"}, {"slotPrefix", slotPrefix}, {"upcast", upcast},
+        {"prepareAfter", prep},
         {"concentration", {{"onDamage", onDamage == Damage::Save ? "save" : onDamage == Damage::Breaks ? "breaks" : "ignored"},
             {"ability", saveAbility}, {"minimumDc", minimumDc}, {"damageShare", damageShare}, {"endsWhenDown", endsWhenDown}}}}.dump();
 }
@@ -172,6 +186,24 @@ bool canCast(const Character& caster, const SpellDefinition& spell, const SpellR
         return false;
     }
     return true;
+}
+
+void spendCasting(Character& caster, const SpellDefinition& spell, const SpellRules& rules, int slot)
+{
+    // Spend the slot
+    if (slot > 0)
+    {
+        const auto found = caster.resources.find(rules.slotPrefix + std::to_string(slot));
+        if (found != caster.resources.end() && found->second.current > 0)
+            found->second.current--;
+    }
+    // Spend any custom resources the spell requires
+    for (const std::string& resource : spell.spends)
+    {
+        const auto found = caster.resources.find(resource);
+        if (found != caster.resources.end() && found->second.current > 0)
+            found->second.current--;
+    }
 }
 
 bool spendSlot(Character& caster, const SpellRules& rules, int slot)

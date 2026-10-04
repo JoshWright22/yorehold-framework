@@ -166,6 +166,8 @@ std::optional<ClassDefinition> Compendium::classFromJson(std::string_view text, 
         c.resources = resourcesFrom(j);
         if (c.dcAbility.size() > 64) throw std::invalid_argument("DC ability is too long");
         c.items = j.value("items", std::vector<std::string>{});
+        c.casting = j.value("casting", std::string{});
+        c.prepareLimit = j.value("prepareLimit", 0);
         if (j.contains("spells"))
         {
             if (!j.at("spells").is_object()) throw std::invalid_argument("spells: maps a spell level to a list of spell ids");
@@ -769,6 +771,20 @@ std::optional<Character> Compendium::build(const Ruleset& rules, const Character
             for (const std::string& id : ids)
                 if (spellLevel <= highestSlot && spells.contains(id) && std::find(c.spells.begin(), c.spells.end(), id) == c.spells.end())
                     c.spells.push_back(id);
+    }
+    // Prepared casters: set up preparable spells and the prepare limit.
+    for (const ClassDefinition* definition : classes_)
+    {
+        if (definition->casting == "prepared")
+        {
+            for (const auto& [spellLevel, ids] : definition->spells)
+                for (const std::string& id : ids)
+                    if (spellLevel <= highestSlot && spells.contains(id) && std::find(c.preparable.begin(), c.preparable.end(), id) == c.preparable.end())
+                        c.preparable.push_back(id);
+            c.prepareLimit = std::max(c.prepareLimit, definition->prepareLimit);
+            // Initially prepared spells = all preparable (can be chosen later)
+            c.prepared = c.preparable;
+        }
     }
 
     // HP last, so race and feat changes to CON count.
