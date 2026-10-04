@@ -32,6 +32,7 @@
 #include <yorehold/framework/rpg/Combat.h>
 #include <yorehold/framework/rpg/Dialogue.h>
 #include <yorehold/framework/rpg/Compendium.h>
+#include <yorehold/framework/rpg/Stealth.h>
 #include <yorehold/framework/save/SaveFile.h>
 #include <yorehold/framework/text/RichText.h>
 #include <yorehold/framework/text/Strings.h>
@@ -739,6 +740,68 @@ void tactics()
     CHECK(!yh::AiProfile::fromJson(R"({"settings":3})"));
 }
 
+void stealth()
+{
+    // A guard at the origin looking along +x, with a wall to the north-east.
+    yh::Watcher guard;
+    guard.range = 100;
+    guard.passivePerception = 12;
+    const yh::Wall walls[] = {{{50, -100}, {50, -10}}};
+    CHECK(yh::sees(guard, {40, 0}, walls) && !yh::sees(guard, {-40, 0}, walls) && !yh::sees(guard, {150, 0}, walls));
+    CHECK(!yh::sees(guard, {80, -40}, walls)); // behind the wall
+    guard.alert = true;
+    CHECK(yh::sees(guard, {-40, 0}, walls));
+    guard.alert = false;
+
+    // Darkness hides anyone beyond darkvision.
+    const auto dark = [](yh::Vec2) { return yh::LightLevel::Dark; };
+    CHECK(!yh::sees(guard, {40, 0}, walls, dark));
+    guard.darkRange = 60;
+    CHECK(yh::sees(guard, {40, 0}, walls, dark));
+    guard.darkRange = 0;
+
+    const auto cone = yh::visionCone(guard, walls, 8);
+    CHECK(cone.size() == 10 && cone.front() == guard.position);
+    bool clipped = false;
+    for (const yh::Vec2 p : cone)
+        clipped |= p.x <= 50.01f && p.y < -10 && std::sqrt(p.x * p.x + p.y * p.y) < 99;
+    CHECK(clipped);
+
+    // Walking across the cone: one check on the way in, then one every 5 units, then none outside it.
+    yh::Random random(7);
+    yh::StealthRules rules;
+    yh::StealthTracker tracker(rules);
+    const yh::Watcher watchers[] = {guard};
+    const auto checks = tracker.move({30, 60}, {30, -60}, true, 30, watchers, {}, random);
+    CHECK(checks.size() >= 20 && checks.size() <= 22); // in view from y = 52 to -52
+    bool hidden = true;
+    for (const auto& c : checks)
+        hidden &= !c.spotted && c.dc == 12 && c.total == c.roll + 30 + rules.brightBonus;
+    CHECK(hidden);
+    CHECK(tracker.move({200, 0}, {200, 10}, true, 30, watchers, {}, random).empty());
+
+    // Walking in the open gets you seen at once; a hopeless sneaker is spotted and stops there.
+    tracker.reset();
+    const auto seen = tracker.move({30, 60}, {30, -60}, false, 0, watchers, {}, random);
+    CHECK(seen.size() == 1 && seen[0].spotted && seen[0].at.y < 60);
+    tracker.reset();
+    const auto caught = tracker.move({30, 60}, {30, -60}, true, -40, watchers, {}, random);
+    CHECK(caught.size() == 1 && caught.back().spotted);
+
+    // Light changes the check.
+    tracker.reset();
+    guard.darkRange = 200;
+    const yh::Watcher seeing[] = {guard};
+    const auto inDark = tracker.move({30, 0}, {30, 0}, true, 0, seeing, {}, random, dark);
+    CHECK(inDark.size() == 1 && inDark[0].total == inDark[0].roll + rules.darkBonus);
+
+    std::string error;
+    const auto loaded = yh::StealthRules::fromJson(R"({"checkEvery":2.5,"dimBonus":3})", &error);
+    CHECK(loaded && loaded->checkEvery == 2.5f && loaded->dimBonus == 3 && loaded->darkBonus == 5);
+    CHECK(yh::StealthRules::fromJson(loaded->toJson())->dimBonus == 3);
+    CHECK(!yh::StealthRules::fromJson(R"({"sneakSpeed":2})", &error) && !error.empty());
+}
+
 void surprise()
 {
     // Surprised combatants lose their first turn; someone who withdraws gets no more turns and
@@ -1356,6 +1419,7 @@ int main()
         {"RPG", rpg},
         {"Tactics", tactics},
         {"Surprise and leaving fights", surprise},
+        {"Stealth", stealth},
         {"Skins", skins},
         {"Saves/history", savesAndHistory},
         {"Networking", networking},
