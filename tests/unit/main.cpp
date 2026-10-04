@@ -688,6 +688,103 @@ void tactics()
     yh::Random one(5), two(5);
     const yh::TacticalChoice first = yh::decide(cunning, twoTargets, grid, one), second = yh::decide(cunning, twoTargets, grid, two);
     CHECK(first.kind == second.kind && first.cell == second.cell && first.target == second.target && first.score == second.score);
+
+    // What breaking means: a name, or weights to pick from. Bad names and weights are refused.
+    const auto yielder = yh::AiProfile::fromJson(R"({"base":"cunning","onBreak":"surrender"})");
+    CHECK(yielder && yielder->onBreak.size() == 1 && yielder->onBreak[0].first == "surrender");
+    const auto mixed = yh::AiProfile::fromJson(R"({"onBreak":{"flee":3,"surrender":1},"surrenderCornered":true})");
+    CHECK(mixed && mixed->onBreak.size() == 2 && mixed->surrenderCornered);
+    const auto mixedAgain = mixed ? yh::AiProfile::fromJson(mixed->toJson()) : std::nullopt;
+    CHECK(mixedAgain && mixedAgain->onBreak == mixed->onBreak && mixedAgain->surrenderCornered);
+    CHECK(!yh::AiProfile::fromJson(R"({"onBreak":"cry"})") && !yh::AiProfile::fromJson(R"({"onBreak":{"flee":0}})")
+        && !yh::AiProfile::fromJson(R"({"onBreak":{"flee":-1,"fight":2}})") && !yh::AiProfile::fromJson(R"({"onBreak":5})"));
+    int fled = 0;
+    yh::Random picks(3);
+    for (int i = 0; i < 400; i++)
+        fled += yh::pickBreak(*mixed, picks) == "flee";
+    CHECK(fled > 250 && fled < 350);
+
+    // Surrender gives up on the spot; cornered with surrenderCornered it gives up rather than fight;
+    // "fight" ignores morale altogether.
+    CHECK(yh::decide(*yielder, losing, grid, random).kind == Kind::Surrender);
+    yh::AiProfile backedIn = cunning;
+    backedIn.surrenderCornered = true;
+    CHECK(yh::decide(backedIn, cornered, grid, random).kind == Kind::Surrender);
+    yh::TacticalView stubborn = losing;
+    stubborn.breakAs = "fight";
+    CHECK(yh::decide(cunning, stubborn, grid, random).kind == Kind::Attack);
+
+    // Alarm: it runs toward the allies who aren't fighting yet, not just away. With none left it flees.
+    yh::TacticalView alarm = losing;
+    alarm.breakAs = "alarm";
+    for (const auto& [cell, cost] : alarm.dashReach)
+        alarm.allyDistance[cell] = grid.distance(cell, {10, 4});
+    alarm.allyDistance[hurt.at] = grid.distance(hurt.at, {10, 4});
+    const yh::TacticalChoice warn = yh::decide(cunning, alarm, grid, random);
+    CHECK(warn.kind == Kind::Alarm && grid.distance(warn.cell, {10, 4}) < grid.distance(hurt.at, {10, 4}));
+    alarm.allyDistance.clear();
+    CHECK(yh::decide(cunning, alarm, grid, random).kind == Kind::Flee);
+
+    // Models: a profile can name another decision model; unknown ones are refused when loading.
+    CHECK(!yh::AiProfile::fromJson(R"({"model":"neural"})") && yh::hasAiModel("utility"));
+    yh::registerAiModel("statue", [](const yh::AiProfile&, const yh::TacticalView& view, const yh::Grid&, yh::Random&, std::vector<yh::TacticalChoice>*) {
+        yh::TacticalChoice still;
+        still.cell = view.units[view.self].at;
+        return still;
+    });
+    const auto statue = yh::AiProfile::fromJson(R"({"model":"statue","settings":{"pose":"grim"}})");
+    CHECK(statue && statue->model == "statue" && statue->settings == R"({"pose":"grim"})");
+    CHECK(yh::decide(*statue, twoTargets, grid, random).kind == Kind::Hold && std::string(yh::kindName(Kind::Alarm)) == "Alarm");
+    CHECK(!yh::AiProfile::fromJson(R"({"settings":3})"));
+}
+
+void surprise()
+{
+    // Surprised combatants lose their first turn; someone who withdraws gets no more turns and
+    // can't be hit, and the fight ends when only one side is left in it.
+    const yh::Ruleset rules = yh::Ruleset::modern();
+    yh::Random random(4);
+    yh::Character hero = yh::makeRandomCharacter(rules, "Hero", "Fighter", random);
+    yh::Character goblin = yh::makeRandomCharacter(rules, "Goblin", "Fighter", random);
+    yh::Character boss = yh::makeRandomCharacter(rules, "Boss", "Fighter", random);
+    for (yh::Character* c : {&hero, &goblin, &boss})
+    {
+        c->stats.setBase("maxHp", 50);
+        c->hp = 50;
+    }
+    yh::Encounter fight(rules, 9);
+    fight.add(hero, 0);
+    fight.add(goblin, 1);
+    fight.add(boss, 1);
+    fight.surprise(1);
+    fight.start();
+    CHECK(fight.round() == 1 && fight.current().character == &hero);
+    fight.nextTurn();
+    CHECK(fight.round() == 2);
+    bool goblinActed = false;
+    for (int i = 0; i < 3; i++)
+    {
+        goblinActed |= fight.current().character == &goblin;
+        fight.nextTurn();
+    }
+    CHECK(goblinActed);
+
+    size_t goblinAt = 0, bossAt = 0;
+    for (size_t i = 0; i < fight.order().size(); i++)
+    {
+        if (fight.order()[i].character == &goblin) goblinAt = i;
+        if (fight.order()[i].character == &boss) bossAt = i;
+    }
+    fight.withdraw(goblinAt, "surrenders");
+    CHECK(!fight.order()[goblinAt].standing() && !fight.finished()
+        && std::find(fight.log().begin(), fight.log().end(), "Goblin surrenders") != fight.log().end());
+    for (int i = 0; i < 6; i++)
+    {
+        CHECK(fight.current().character != &goblin);
+        fight.nextTurn();
+    }
+    fight.withdraw(bossAt);
+    CHECK(fight.finished() && fight.winningTeam() == 0);
 }
 
 void skins()
@@ -1230,6 +1327,7 @@ int main()
         {"Audio/scenes", audioAndScenes},
         {"RPG", rpg},
         {"Tactics", tactics},
+        {"Surprise and leaving fights", surprise},
         {"Skins", skins},
         {"Saves/history", savesAndHistory},
         {"Networking", networking},

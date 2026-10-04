@@ -9,7 +9,29 @@ void Encounter::add(Character& character, int team)
 {
     if (started_) return;
     for (const auto& c : order_) if (c.character == &character) return;
-    order_.push_back({&character, team, 0, {}, {}});
+    Combatant c;
+    c.character = &character;
+    c.team = team;
+    order_.push_back(c);
+}
+
+void Encounter::surprise(int team)
+{
+    if (started_) return;
+    for (Combatant& c : order_)
+        if (c.team == team)
+            c.surprised = true;
+}
+
+void Encounter::withdraw(size_t index, const std::string& why)
+{
+    if (index >= order_.size() || order_[index].out)
+        return;
+    order_[index].out = true;
+    if (!why.empty())
+        addLog(order_[index].character->name + " " + why);
+    if (started_ && index == current_)
+        nextTurn();
 }
 
 void Encounter::start()
@@ -27,13 +49,22 @@ void Encounter::start()
         return a.character->initiativeModifier(rules_) > b.character->initiativeModifier(rules_);
     });
     started_ = true;
-    round_ = 1;
-    current_ = 0;
     addLog("Round 1");
-    for (size_t i = 0; i < order_.size(); ++i)
-        if (!order_[i].character->down()) { current_ = i; break; }
-    if (!order_[current_].character->down())
-        beginTurn();
+    for (const Combatant& c : order_)
+        if (c.surprised && c.standing())
+            addLog(c.character->name + " is caught by surprise");
+    // Whoever goes first, unless they're down or surprised (then the next one that can).
+    current_ = order_.size() - 1;
+    round_ = 0;
+    nextTurn();
+    if (round_ == 0)
+    {
+        // Nothing to fight (one side only): the fight is over before it begins.
+        round_ = 1;
+        current_ = 0;
+        if (order_[current_].standing())
+            beginTurn();
+    }
 }
 
 void Encounter::beginTurn()
@@ -47,19 +78,33 @@ void Encounter::nextTurn()
 {
     if (!started_ || finished())
         return;
-    for (size_t tries = 0; tries < order_.size(); tries++)
+    // Twice round: a surprised combatant passes once and can then take the next turn that comes.
+    for (size_t tries = 0; tries < order_.size() * 2 + 1; tries++)
     {
         current_++;
         if (current_ >= order_.size())
         {
             current_ = 0;
-            round_++;
-            for (Combatant& c : order_)
-                c.character->endRound();
-            addLog("Round " + std::to_string(round_));
+            if (round_ > 0)
+            {
+                for (Combatant& c : order_)
+                    c.character->endRound();
+                round_++;
+                addLog("Round " + std::to_string(round_));
+            }
+            else
+                round_ = 1;
         }
-        if (!order_[current_].character->down())
-            break;
+        Combatant& c = order_[current_];
+        if (!c.standing())
+            continue;
+        if (c.surprised)
+        {
+            c.surprised = false;
+            addLog(c.character->name + " is surprised and loses the turn");
+            continue;
+        }
+        break;
     }
     beginTurn();
 }
@@ -67,7 +112,7 @@ void Encounter::nextTurn()
 AttackResult Encounter::attack(size_t targetIndex)
 {
     AttackResult result;
-    if (!canAct() || targetIndex >= order_.size() || order_[targetIndex].character->down())
+    if (!canAct() || targetIndex >= order_.size() || !order_[targetIndex].standing())
         return result;
     Combatant& attacker = order_[current_];
     Character& target = *order_[targetIndex].character;
@@ -119,7 +164,7 @@ bool Encounter::dash()
 
 bool Encounter::spendMovement(int squares)
 {
-    if (!started_ || order_.empty() || finished() || squares < 0 || order_[current_].character->down()) return false;
+    if (!started_ || order_.empty() || finished() || squares < 0 || !order_[current_].standing()) return false;
     TurnBudget& budget = order_[current_].budget;
     if (squares > budget.movementLeft)
         return false;
@@ -133,7 +178,7 @@ bool Encounter::finished() const
     bool haveTeam = false;
     for (const auto& c : order_)
     {
-        if (c.character->down()) continue;
+        if (!c.standing()) continue;
         if (haveTeam && c.team != team) return false;
         team = c.team;
         haveTeam = true;
@@ -146,7 +191,7 @@ int Encounter::winningTeam() const
     int team = -1;
     for (const Combatant& c : order_)
     {
-        if (c.character->down())
+        if (!c.standing())
             continue;
         if (team >= 0 && c.team != team)
             return -1;

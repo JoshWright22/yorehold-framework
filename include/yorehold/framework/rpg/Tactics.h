@@ -8,6 +8,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace yh
@@ -39,6 +40,20 @@ struct AiProfile
     bool fleeLeaderless = false; // once its side had a leader and none is left standing
     bool leader = false;         // counts as a leader for its allies
     float escapeAt = 8;          // squares of walking from the nearest foe at which it can get away
+
+    // What it does once its morale breaks, picked by weight when it happens:
+    //   flee       runs until it gets away (gone for good)
+    //   alarm      runs to the nearest allies not yet fighting and brings them in
+    //   surrender  gives up where it stands; the party can talk to it
+    //   fight      shrugs it off and fights on
+    // In data: "surrender", or {"flee": 2, "surrender": 1}.
+    std::vector<std::pair<std::string, float>> onBreak = {{"flee", 1.0f}};
+    bool surrenderCornered = false; // a runner with nowhere to go gives up instead of fighting
+
+    // Which decision model runs it. "utility" (the scoring above) is built in; games and tools can
+    // register more (see registerAiModel). `settings` is the model's own JSON object, untouched.
+    std::string model = "utility";
+    std::string settings = "{}";
 
     // Built in: "mindless", "animal", "cunning", "tactical". Null for anything else.
     static const AiProfile* preset(std::string_view name);
@@ -78,11 +93,15 @@ struct TacticalView
     int sideAtStart = 1;   // how many its side began the fight with
     bool hadLeader = false;
     bool fleeing = false;  // it already broke on an earlier turn: it keeps running
+    // How it reacts when its morale breaks (one of the onBreak names, picked with pickBreak when
+    // it first breaks). Empty: the first one listed.
+    std::string breakAs;
+    CellCosts allyDistance; // squares of walking to the nearest ally not yet in the fight (for "alarm"); empty = none
 };
 
 struct TacticalChoice
 {
-    enum class Kind { Hold, Attack, Advance, Flee };
+    enum class Kind { Hold, Attack, Advance, Flee, Alarm, Surrender };
     Kind kind = Kind::Hold;
     Cell cell;         // where it ends its move (its own cell = stays put)
     size_t target = 0; // index into units, for Attack
@@ -92,8 +111,21 @@ struct TacticalChoice
 
 // Its morale has broken (see the flee* numbers).
 bool wantsToFlee(const AiProfile& profile, const TacticalView& view);
-// Scores every option and returns the best. `considered` gets all of them, best first (for debug views).
+// Picks one of onBreak by weight.
+std::string pickBreak(const AiProfile& profile, Random& random);
+// Runs the profile's model and returns its choice. `considered` gets every option, best first (for debug views).
 TacticalChoice decide(const AiProfile& profile, const TacticalView& view, const Grid& grid, Random& random,
+    std::vector<TacticalChoice>* considered = nullptr);
+// "Hold", "Attack"...
+const char* kindName(TacticalChoice::Kind kind);
+
+// A decision model: anything that turns a view into a choice. Register one under a name and any
+// profile with "model": "<name>" uses it (an unknown model falls back to "utility").
+using AiModel = std::function<TacticalChoice(const AiProfile&, const TacticalView&, const Grid&, Random&, std::vector<TacticalChoice>*)>;
+void registerAiModel(const std::string& name, AiModel model);
+bool hasAiModel(std::string_view name);
+// The built-in model: weighs every option with the profile's numbers.
+TacticalChoice decideByUtility(const AiProfile& profile, const TacticalView& view, const Grid& grid, Random& random,
     std::vector<TacticalChoice>* considered = nullptr);
 
 }

@@ -24,6 +24,9 @@ struct Combatant
     int initiative = 0;
     RollResult initiativeRoll;
     TurnBudget budget;
+    bool out = false;       // left the fight without going down (gave up, got away): no more turns, can't be attacked
+    bool surprised = false; // caught unaware: loses its first turn
+    bool standing() const { return !out && !character->down(); }
 };
 
 struct AttackResult
@@ -52,10 +55,16 @@ public:
     Combatant& current() { return order_.at(current_); }
     const std::vector<Combatant>& order() const { return order_; }
 
-    // Ends the current turn; skips anyone who's down. Ticks conditions when a round ends.
+    // Before start(): everyone on `team` loses their first turn.
+    void surprise(int team);
+    // Takes a combatant out of the fight for good without dropping it (surrendered, fled).
+    // If it's their turn, the turn passes on.
+    void withdraw(size_t index, const std::string& why = {});
+
+    // Ends the current turn; skips anyone who's down, out or surprised. Ticks conditions when a round ends.
     void nextTurn();
 
-    bool canAct() const { return started_ && !order_.empty() && !order_[current_].character->down() && !finished() && order_[current_].budget.action; }
+    bool canAct() const { return started_ && !order_.empty() && order_[current_].standing() && !finished() && order_[current_].budget.action; }
     // Spends the action. Attack roll vs AC; a natural 20 always hits and doubles the dice.
     AttackResult attack(size_t targetIndex);
     // Spends the action for double movement this turn.

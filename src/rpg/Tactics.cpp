@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
 #include <stdexcept>
 
 namespace yh
@@ -93,6 +94,52 @@ float costAt(const CellCosts& costs, Cell cell, float missing)
     return found == costs.end() ? missing : found->second;
 }
 
+const char* const breakNames[] = {"flee", "alarm", "surrender", "fight"};
+
+bool knownBreak(std::string_view name)
+{
+    return std::find(std::begin(breakNames), std::end(breakNames), name) != std::end(breakNames);
+}
+
+std::map<std::string, AiModel, std::less<>>& models()
+{
+    static std::map<std::string, AiModel, std::less<>> all = {{"utility", decideByUtility}};
+    return all;
+}
+
+}
+
+void registerAiModel(const std::string& name, AiModel model)
+{
+    models()[name] = std::move(model);
+}
+
+bool hasAiModel(std::string_view name)
+{
+    return models().contains(name);
+}
+
+const char* kindName(TacticalChoice::Kind kind)
+{
+    const char* names[] = {"Hold", "Attack", "Advance", "Flee", "Alarm", "Surrender"};
+    return names[static_cast<int>(kind)];
+}
+
+std::string pickBreak(const AiProfile& profile, Random& random)
+{
+    float total = 0;
+    for (const auto& [name, weight] : profile.onBreak)
+        total += weight;
+    if (profile.onBreak.empty() || total <= 0)
+        return "flee";
+    float roll = total * static_cast<float>(random.range(0, 9999)) / 10000.0f;
+    for (const auto& [name, weight] : profile.onBreak)
+    {
+        if (roll < weight)
+            return name;
+        roll -= weight;
+    }
+    return profile.onBreak.back().first;
 }
 
 const AiProfile* AiProfile::preset(std::string_view name)
@@ -141,6 +188,38 @@ std::optional<AiProfile> AiProfile::fromJson(std::string_view text, std::string*
         p.fleeLeaderless = j.value("fleeLeaderless", p.fleeLeaderless);
         p.leader = j.value("leader", p.leader);
         p.escapeAt = j.value("escapeAt", p.escapeAt);
+        if (j.contains("onBreak"))
+        {
+            const json& on = j.at("onBreak");
+            p.onBreak.clear();
+            if (on.is_string())
+                p.onBreak.emplace_back(on.get<std::string>(), 1.0f);
+            else if (on.is_object())
+                for (auto it = on.begin(); it != on.end(); ++it)
+                    p.onBreak.emplace_back(it.key(), it.value().get<float>());
+            else
+                throw std::invalid_argument("onBreak is a name or an object of weights");
+            float total = 0;
+            for (const auto& [name, weight] : p.onBreak)
+            {
+                if (!knownBreak(name))
+                    throw std::invalid_argument("onBreak \"" + name + "\" isn't flee, alarm, surrender or fight");
+                if (!std::isfinite(weight) || weight < 0 || weight > 1000)
+                    throw std::invalid_argument("onBreak weights are 0 to 1000");
+                total += weight;
+            }
+            if (total <= 0)
+                throw std::invalid_argument("onBreak needs a weight above 0");
+        }
+        p.surrenderCornered = j.value("surrenderCornered", p.surrenderCornered);
+        p.model = j.value("model", p.model);
+        if (!hasAiModel(p.model))
+            throw std::invalid_argument("Unknown AI model \"" + p.model + "\"");
+        if (j.contains("settings"))
+        {
+            if (!j.at("settings").is_object()) throw std::invalid_argument("settings is an object");
+            p.settings = j.at("settings").dump();
+        }
         for (const float value : {p.damage, p.finish, p.weak, p.isolated, p.pack, p.nearby, p.danger, p.random, p.fleeHp, p.fleeLosses, p.escapeAt})
             if (!std::isfinite(value) || value < 0 || value > 1000) throw std::invalid_argument("AI numbers are 0 to 1000");
         if (p.escapeAt < 1) throw std::invalid_argument("escapeAt is at least 1");
@@ -156,9 +235,13 @@ std::optional<AiProfile> AiProfile::fromJson(std::string_view text, std::string*
 
 std::string AiProfile::toJson() const
 {
+    json breaks = json::object();
+    for (const auto& [name, weight] : onBreak)
+        breaks[name] = weight;
     return json{{"base", "none"}, {"label", base}, {"damage", damage}, {"finish", finish}, {"weak", weak}, {"isolated", isolated},
         {"pack", pack}, {"nearby", nearby}, {"danger", danger}, {"random", random}, {"fleeHp", fleeHp}, {"fleeLosses", fleeLosses},
-        {"fleeLeaderless", fleeLeaderless}, {"leader", leader}, {"escapeAt", escapeAt}}.dump();
+        {"fleeLeaderless", fleeLeaderless}, {"leader", leader}, {"escapeAt", escapeAt}, {"onBreak", breaks},
+        {"surrenderCornered", surrenderCornered}, {"model", model}, {"settings", json::parse(settings)}}.dump();
 }
 
 bool wantsToFlee(const AiProfile& profile, const TacticalView& view)
@@ -186,6 +269,14 @@ bool wantsToFlee(const AiProfile& profile, const TacticalView& view)
 
 TacticalChoice decide(const AiProfile& profile, const TacticalView& view, const Grid& grid, Random& random, std::vector<TacticalChoice>* considered)
 {
+    const auto found = models().find(profile.model);
+    if (found == models().end())
+        return decideByUtility(profile, view, grid, random, considered);
+    return found->second(profile, view, grid, random, considered);
+}
+
+TacticalChoice decideByUtility(const AiProfile& profile, const TacticalView& view, const Grid& grid, Random& random, std::vector<TacticalChoice>* considered)
+{
     const TacticalUnit& me = view.units.at(view.self);
     std::vector<TacticalChoice> options;
 
@@ -206,10 +297,43 @@ TacticalChoice decide(const AiProfile& profile, const TacticalView& view, const 
     const float unreachable = 1e6f;
     const float here = costAt(view.foeDistance, me.at, unreachable);
 
-    if (wantsToFlee(profile, view))
+    const std::string breakAs = !view.breakAs.empty() ? view.breakAs : profile.onBreak.empty() ? "flee" : profile.onBreak.front().first;
+    if (breakAs != "fight" && wantsToFlee(profile, view))
     {
-        // As far from every foe as it can get. Nowhere better to go = cornered, so it fights.
         const CellCosts& cells = view.action && !view.dashReach.empty() ? view.dashReach : view.reach;
+        auto giveUp = [&] {
+            TacticalChoice yield;
+            yield.kind = TacticalChoice::Kind::Surrender;
+            yield.cell = me.at;
+            if (considered) considered->push_back(yield);
+            return yield;
+        };
+        if (breakAs == "surrender")
+            return giveUp();
+
+        // Raising the alarm: head for the nearest allies not yet fighting. None left = just run.
+        const float allyHere = costAt(view.allyDistance, me.at, unreachable);
+        if (breakAs == "alarm" && allyHere < unreachable)
+        {
+            TacticalChoice best;
+            best.kind = TacticalChoice::Kind::Alarm;
+            best.cell = me.at;
+            best.score = -allyHere;
+            for (const auto& [cell, cost] : cells)
+            {
+                const float score = -costAt(view.allyDistance, cell, unreachable) - cost * 0.01f;
+                if (score > best.score)
+                {
+                    best.cell = cell;
+                    best.score = score;
+                    best.dash = !view.reach.contains(cell);
+                }
+            }
+            if (considered) considered->push_back(best);
+            return best;
+        }
+
+        // As far from every foe as it can get. Nowhere better to go = cornered, so it fights (or gives up).
         TacticalChoice best;
         best.kind = TacticalChoice::Kind::Flee;
         best.cell = me.at;
@@ -232,6 +356,8 @@ TacticalChoice decide(const AiProfile& profile, const TacticalView& view, const 
             if (considered) considered->push_back(best);
             return best;
         }
+        if (profile.surrenderCornered)
+            return giveUp();
     }
 
     // Stay where it is and do nothing: what everything else has to beat.
