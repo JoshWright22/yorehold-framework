@@ -3,7 +3,11 @@
 
 #include <yorehold/framework/rpg/CharacterChoices.h>
 #include <yorehold/framework/rpg/Compendium.h>
+#include <yorehold/framework/assets/FileSystem.h>
 #include <nlohmann/json.hpp>
+
+#include <filesystem>
+#include <fstream>
 
 namespace regression
 {
@@ -157,6 +161,97 @@ void liveState()
     CHECK(read.scoreMethod == "fixed" && read.notes == "Old" && read.check(rules));
 }
 
+void options()
+{
+    namespace fs = std::filesystem;
+    std::string error;
+    // Strict files: a typo is refused with its field named.
+    CHECK(yh::raceFromJson(R"({"id":"elf","speed":35,"darkvision":60,"abilities":{"dex":2},"feats":["keen"]})", &error) && error.empty());
+    CHECK(!yh::raceFromJson(R"({"id":"elf","sped":35})", &error) && error == "sped: unknown field");
+    CHECK(!yh::raceFromJson(R"({"id":"Elf"})", &error) && error.find("id") == 0);
+    CHECK(!yh::backgroundFromJson(R"({"id":"sailor","items":["Rope"]})", &error) && error.find("items") == 0);
+    CHECK(!yh::featFromJson(R"({"id":"x","kind":"epic"})", &error) && error.find("kind") == 0);
+    CHECK(!yh::featFromJson(R"({"id":"x","requires":{"lvl":2}})", &error) && error == "requires.lvl: unknown field");
+    CHECK(!yh::featFromJson(R"({"id":"x","modifiers":[{"stat":"ac","value":"one"}]})", &error) && error.find("modifiers[0].value") == 0);
+    CHECK(!yh::featFromJson(R"({"id":"x","resources":{"luck":0}})", &error) && error.find("resources.luck") == 0);
+    const auto tough = yh::featFromJson(R"({"id":"tough","kind":"general","modifiers":[{"stat":"maxHp","value":3}],
+        "resources":{"grit":1},"requires":{"level":2,"abilities":{"con":12}}})", &error);
+    CHECK(tough && tough->kind == "general" && tough->needs.level == 2 && tough->needs.abilities.at("con") == 12
+        && tough->modifiers.size() == 1 && tough->resources.at("grit").max == 1);
+
+    // A ruleset folder of options; references are checked once everything is read.
+    const fs::path root = fs::temp_directory_path() / "yorehold-options-test";
+    fs::remove_all(root);
+    for (const char* folder : {"good/feats", "good/races", "good/backgrounds", "bad/races"})
+        fs::create_directories(root / folder);
+    std::ofstream(root / "good/feats/keen.json") << R"({"id":"keen","kind":"race","ranks":{"perception":"expert"}})";
+    std::ofstream(root / "good/feats/tough.json") << R"({"id":"tough","modifiers":[{"stat":"maxHp","value":3}],"resources":{"grit":1},
+        "requires":{"level":2,"abilities":{"con":12}}})";
+    std::ofstream(root / "good/feats/sure-foot.json") << R"({"id":"sure-foot","kind":"class","proficiencies":["acrobatics"],
+        "requires":{"classes":["scout"],"races":["elf"],"proficiencies":["stealth"]}})";
+    std::ofstream(root / "good/races/elf.json") << R"({"id":"elf","name":"Elf","speed":35,"darkvision":60,"abilities":{"dex":2,"con":-2},"feats":["keen"]})";
+    std::ofstream(root / "good/backgrounds/sailor.json") << R"({"id":"sailor","proficiencies":["athletics","survival"],"items":["sword"],"abilities":{"str":1}})";
+    std::ofstream(root / "bad/races/orc.json") << R"({"id":"orc","feats":["rage"]})";
+    yh::FileSystem disk;
+    CHECK(disk.mountFolder(root.string(), "test"));
+    auto compendium = classes();
+    CHECK(compendium.loadOptions(disk, "good", &error) && error.empty());
+    CHECK(compendium.feats.size() == 3 && compendium.race("elf") && compendium.background("sailor"));
+    CHECK(!compendium.loadOptions(disk, "bad", &error) && error.find("orc.json") != std::string::npos
+        && error.find("no feat \"rage\"") != std::string::npos && !compendium.race("orc") && compendium.race("elf"));
+    disk.unmount("test");
+    fs::remove_all(root);
+
+    // The race and background shape the sheet.
+    const auto rules = yh::Ruleset::modern();
+    auto choices = ana(rules);
+    choices.race = "elf";
+    choices.background = "sailor";
+    const auto elf = compendium.build(rules, choices, &error);
+    CHECK(elf && error.empty());
+    if (!elf) return;
+    CHECK(elf->ancestry == "Elf" && elf->abilityScore("dex") == 12 && elf->abilityScore("con") == 12 && elf->abilityScore("str") == 11);
+    CHECK(elf->speedFeet() == 35 && elf->stats.integer("darkvision") == 60 && elf->maxHp() == 10 + 2 + 1);
+    CHECK(elf->proficiencies.contains("survival") && elf->proficiencyRank(rules, "perception") == "expert");
+    CHECK(elf->inventory.size() == 2);
+
+    // Feat picks: requirements judged at the level they were taken.
+    auto picked = choices;
+    picked.levels[0].picks["feats"] = {"tough"};
+    CHECK(!compendium.build(rules, picked, &error) && error == "levels[0].picks.feats: \"tough\" needs level 2");
+    picked.levels[0].picks.clear();
+    picked.levels.push_back({"soldier", {{"feats", {"tough"}}}});
+    const auto second = compendium.build(rules, picked, &error);
+    CHECK(second && second->maxHp() == 13 + 7 + 3 && second->resources.at("grit").max == 1);
+    auto weak = picked; weak.scores["con"] = 12; // 10 after the elf's -2
+    CHECK(!compendium.build(rules, weak, &error) && error == "levels[1].picks.feats: \"tough\" needs con 12");
+    auto twice = picked; twice.levels.push_back({"soldier", {{"feats", {"tough"}}}});
+    CHECK(!compendium.build(rules, twice, &error) && error == "levels[2].picks.feats: \"tough\" is already taken");
+    auto foot = choices;
+    foot.levels.push_back({"scout", {{"feats", {"sure-foot"}}}});
+    CHECK(!compendium.build(rules, foot, &error) && error == "levels[1].picks.feats: \"sure-foot\" needs training in stealth");
+    foot.levels[1].picks["skills"] = {"stealth"};
+    CHECK(compendium.build(rules, foot, &error) && error.empty());
+    auto human = foot; human.race.clear();
+    CHECK(!compendium.build(rules, human, &error) && error == "levels[1].picks.feats: \"sure-foot\" is for another race");
+    auto soldierOnly = foot; soldierOnly.levels[1].classId = "soldier";
+    CHECK(!compendium.build(rules, soldierOnly, &error) && error == "levels[1].picks.feats: \"sure-foot\" is for another class");
+    auto missing = choices; missing.levels[0].picks["feats"] = {"flight"};
+    CHECK(!compendium.build(rules, missing, &error) && error == "levels[0].picks.feats: no feat \"flight\"");
+    auto noRace = choices; noRace.race = "giant";
+    CHECK(!compendium.build(rules, noRace, &error) && error == "race: no race \"giant\"");
+    auto noBackground = choices; noBackground.background = "pirate";
+    CHECK(!compendium.build(rules, noBackground, &error) && error == "background: no background \"pirate\"");
+
+    // A rebuild swaps feat modifiers for the new set and leaves others alone.
+    auto live = *second;
+    live.addModifier("blessed", {"maxHp", yh::Modifier::Op::Add, 1, ""}, 3);
+    live.adoptBuild(*compendium.build(rules, picked));
+    CHECK(live.maxHp() == 23 + 1);
+    live.adoptBuild(*compendium.build(rules, choices));
+    CHECK(live.maxHp() == 13 + 1 && live.hasCondition("blessed"));
+}
+
 }
 
 void characterChoices()
@@ -164,6 +259,7 @@ void characterChoices()
     files();
     building();
     liveState();
+    options();
 }
 
 }

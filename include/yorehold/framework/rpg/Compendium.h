@@ -3,6 +3,7 @@
 #include "yorehold/framework/graphics/Renderer.h"
 #include "yorehold/framework/rpg/Character.h"
 #include "yorehold/framework/rpg/CharacterChoices.h"
+#include "yorehold/framework/rpg/CharacterOptions.h"
 #include "yorehold/framework/rpg/Tactics.h"
 
 #include <map>
@@ -80,6 +81,10 @@ public:
     // AI profiles by name: the built-in four, plus (or replaced by) every ai/<id>.json. A file is
     // {"id": "coward", "base": "cunning", "fleeHp": 1}; without a base it starts from nothing.
     std::map<std::string, AiProfile, std::less<>> ai;
+    // Player options, from the ruleset's folder (see loadOptions).
+    std::map<std::string, RaceDefinition> races;
+    std::map<std::string, BackgroundDefinition> backgrounds;
+    std::map<std::string, FeatDefinition> feats;
 
     Compendium();
     AiProfile::Lookup aiLookup() const; // valid while this compendium is alive and unchanged
@@ -90,10 +95,18 @@ public:
     // error nothing is added and `error` names the file. Items are checked first, so classes and
     // creatures may only list items that exist (here or loaded before).
     bool load(const FileSystem& files, std::string_view folder, std::string* error = nullptr);
+    // Reads `folder`/feats, /races and /backgrounds: a ruleset's player options, kept apart from
+    // load() so a chapter's own folder can't add them. Call after load(), since backgrounds list
+    // items. All-or-nothing, and every feat a race or background gives, and every race or class a
+    // feat requires, must exist.
+    bool loadOptions(const FileSystem& files, std::string_view folder, std::string* error = nullptr);
 
     const Item* item(std::string_view id) const;
     const ClassDefinition* characterClass(std::string_view id) const;
     const CreatureDefinition* creature(std::string_view id) const;
+    const RaceDefinition* race(std::string_view id) const;
+    const BackgroundDefinition* background(std::string_view id) const;
+    const FeatDefinition* feat(std::string_view id) const;
 
     // A first-level character of a class: rolled abilities, HP = hit die + CON + bonus, the
     // class's gear equipped. Returns nullopt for an unknown class.
@@ -101,8 +114,10 @@ public:
     // The sheet a character's choices make under these rules: their scores; the first class's
     // hit die, speed, ranks, resources and gear; HP for every level (the first at the hit die's
     // maximum plus the class bonus, later ones at its average rounded up, each plus CON, at least
-    // 1). Skill picks become trained skills; other picks wait for the features that read them.
-    // nullopt, with `error` filled, for choices that don't fit the ruleset or name a missing class.
+    // 1). The race and background change scores, add skills and give their feats; the race's
+    // speed replaces the class's. Skill picks become trained skills; feat picks must meet their
+    // requirements at the level they were taken. Other picks wait for the features that read them.
+    // nullopt, with `error` filled, for choices that don't fit the ruleset or name a missing option.
     std::optional<Character> build(const Ruleset& rules, const CharacterChoices& choices, std::string* error = nullptr) const;
     // A creature from its stat block; `name` overrides the definition's (for "Snik the goblin").
     std::optional<Character> makeCreature(const Ruleset& rules, std::string_view creatureId, std::string name, Random& random) const;

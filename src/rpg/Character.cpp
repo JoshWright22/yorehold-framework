@@ -392,6 +392,14 @@ void Character::adoptBuild(const Character& built)
     notes = built.notes;
     for (const auto& [stat, value] : built.stats.bases())
         stats.setBase(stat, value);
+    // Modifiers the choices made (feats) are swapped for the new set; gear and conditions stay.
+    std::set<std::string> fromBuild;
+    for (const Modifier& m : stats.modifiers())
+        if (m.source.starts_with("build:")) fromBuild.insert(m.source);
+    for (const std::string& source : fromBuild)
+        stats.removeSource(source);
+    for (const Modifier& m : built.stats.modifiers())
+        if (m.source.starts_with("build:")) stats.addModifier(m);
     proficiencies = built.proficiencies;
     proficiencyRanks = built.proficiencyRanks;
     dcAbility = built.dcAbility;

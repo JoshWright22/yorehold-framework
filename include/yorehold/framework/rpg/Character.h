@@ -147,7 +147,8 @@ public:
     // Takes everything a character's choices decide from a freshly built sheet (see
     // Compendium::build) and keeps this sheet's live state: HP lost, temporary HP, conditions and
     // their modifiers, what it carries, death saves and resources spent. HP stays within the new
-    // maximum; a resource keeps its current amount up to the new maximum.
+    // maximum; a resource keeps its current amount up to the new maximum. Modifiers whose source
+    // starts "build:" (a feat's) belong to the build and are replaced by the new sheet's.
     void adoptBuild(const Character& built);
 
     // Save files. Returns false and fills `error` if the JSON is broken.

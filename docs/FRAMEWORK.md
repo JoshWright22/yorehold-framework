@@ -206,7 +206,44 @@ level named. `makeCharacter` is `rollChoices` followed by `build`.
 `Character::adoptBuild(built)` brings a sheet that is in play up to date with a fresh build: it
 takes the names, level, scores and other base stats, ranks and resource maximums, and keeps the
 live state (HP lost, temporary HP, conditions and their modifiers, inventory, death saves,
-resources spent). HP and resources are cut to the new maximums.
+resources spent). HP and resources are cut to the new maximums. Modifiers whose source starts
+`build:` (what feats add) are replaced by the new build's.
+
+### Races, backgrounds and feats
+
+A ruleset's player options, one file each named after its id, read by
+`Compendium::loadOptions(files, folder)` from `<folder>/feats`, `/races` and `/backgrounds`
+(after `load`, since backgrounds give items). Unknown fields are refused with the field named, and
+every feat a race or background gives and every race or class a feat requires must exist.
+
+```json
+{ "id": "dwarf", "name": "Dwarf", "speed": 25, "darkvision": 60, "bonusHp": 2,
+  "abilities": { "con": 2, "cha": -2 }, "proficiencies": ["survival"], "feats": ["stone-sense"] }
+{ "id": "soldier", "name": "Soldier", "abilities": { "str": 1 },
+  "proficiencies": ["athletics"], "feats": ["drilled"], "items": ["spear"] }
+{ "id": "tough", "name": "Tough", "kind": "general", "repeatable": false,
+  "requires": { "level": 2, "races": [], "classes": [], "abilities": { "con": 12 }, "proficiencies": [] },
+  "modifiers": [ { "stat": "maxHp", "op": "add", "value": 3 } ],
+  "proficiencies": [], "ranks": { "con": "expert" }, "resources": { "grit": 1 } }
+```
+
+| Field | Meaning |
+|---|---|
+| race `speed` | Feet; replaces the class's when above 0. `darkvision` is the better of race and class. `bonusHp` adds to first-level HP. |
+| `abilities` | Race and background: added to the chosen scores. Feat `requires.abilities`: minimum scores. |
+| `proficiencies` | Trained in these. In a feat's `requires`: trained (or better) already. |
+| `feats` | Given free, without checking their requirements. |
+| `items` | A background's gear, given after the class's. |
+| feat `kind` | `class`, `skill`, `general` (the default) or `race`: which level slots may offer it. |
+| `requires` | `level` (the character level it was taken at), `races`, `classes` (a level in any of them so far), `abilities`, `proficiencies`. |
+| `modifiers` | Stat modifiers kept on the sheet (source `build:feat:<id>`). |
+| `ranks` | Raised to at least this rank. |
+| `resources` | Added to these maximums (a new one starts full). |
+
+`build` applies the race and background, then their feats, then each level's skill and feat picks
+in order, and works out HP last so CON changes count. A picked feat that doesn't exist, was taken
+already (unless `repeatable`), or whose requirements weren't met at that level fails with the level
+named: `levels[1].picks.feats: "tough" needs level 2`.
 
 ### Effects
 

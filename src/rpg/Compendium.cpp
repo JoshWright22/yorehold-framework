@@ -336,6 +336,69 @@ bool Compendium::load(const FileSystem& files, std::string_view folder, std::str
     return true;
 }
 
+bool Compendium::loadOptions(const FileSystem& files, std::string_view folder, std::string* error)
+{
+    if (error) error->clear();
+    const std::string base = folder.empty() ? std::string() : std::string(folder) + "/";
+    Compendium next = *this;
+
+    // Each file read through `add`, which returns a problem or nothing; the file name is the id.
+    auto each = [&](const char* kind, auto add) {
+        for (const std::string& path : files.list(base + kind))
+        {
+            if (!path.ends_with(".json"))
+                continue;
+            const std::string stem = path.substr(path.rfind('/') + 1, path.size() - path.rfind('/') - 1 - 5);
+            const std::optional<std::string> text = files.readText(path);
+            std::string problem = text ? add(*text, stem) : "can't read";
+            if (!problem.empty())
+            {
+                if (error) *error = path + ": " + problem;
+                return false;
+            }
+        }
+        return true;
+    };
+    auto read = [&](auto fromJson, auto& into) {
+        return [fromJson, target = &into](const std::string& text, const std::string& stem) -> std::string {
+            std::string e;
+            auto definition = fromJson(text, &e);
+            if (!definition) return e;
+            if (definition->id != stem) return "id \"" + definition->id + "\" doesn't match the file name";
+            (*target)[definition->id] = std::move(*definition);
+            return {};
+        };
+    };
+    if (!each("feats", read(featFromJson, next.feats)) || !each("races", read(raceFromJson, next.races))
+        || !each("backgrounds", read(backgroundFromJson, next.backgrounds)))
+        return false;
+
+    // Cross-references, now everything is in.
+    auto problem = [&](const std::string& path, const std::string& what) {
+        if (error) *error = base + path + ": " + what;
+        return false;
+    };
+    for (const auto& [id, feat] : next.feats)
+    {
+        for (const std::string& race : feat.needs.races)
+            if (!next.races.contains(race)) return problem("feats/" + id + ".json", "requires.races: no race \"" + race + "\"");
+        for (const std::string& characterClass : feat.needs.classes)
+            if (!next.classes.contains(characterClass)) return problem("feats/" + id + ".json", "requires.classes: no class \"" + characterClass + "\"");
+    }
+    for (const auto& [id, race] : next.races)
+        for (const std::string& feat : race.feats)
+            if (!next.feats.contains(feat)) return problem("races/" + id + ".json", "feats: no feat \"" + feat + "\"");
+    for (const auto& [id, background] : next.backgrounds)
+    {
+        for (const std::string& feat : background.feats)
+            if (!next.feats.contains(feat)) return problem("backgrounds/" + id + ".json", "feats: no feat \"" + feat + "\"");
+        for (const std::string& item : background.items)
+            if (!next.items.contains(item)) return problem("backgrounds/" + id + ".json", "items: no item \"" + item + "\"");
+    }
+    *this = std::move(next);
+    return true;
+}
+
 Compendium::Compendium()
 {
     for (const char* name : {"mindless", "animal", "cunning", "tactical"})
@@ -375,6 +438,24 @@ const CreatureDefinition* Compendium::creature(std::string_view id) const
     return found == creatures.end() ? nullptr : &found->second;
 }
 
+const RaceDefinition* Compendium::race(std::string_view id) const
+{
+    const auto found = races.find(std::string(id));
+    return found == races.end() ? nullptr : &found->second;
+}
+
+const BackgroundDefinition* Compendium::background(std::string_view id) const
+{
+    const auto found = backgrounds.find(std::string(id));
+    return found == backgrounds.end() ? nullptr : &found->second;
+}
+
+const FeatDefinition* Compendium::feat(std::string_view id) const
+{
+    const auto found = feats.find(std::string(id));
+    return found == feats.end() ? nullptr : &found->second;
+}
+
 std::optional<Character> Compendium::makeCharacter(const Ruleset& rules, std::string_view classId, std::string name, Random& random) const
 {
     if (!characterClass(classId))
@@ -397,10 +478,20 @@ std::optional<Character> Compendium::build(const Ruleset& rules, const Character
         }
     }
     const ClassDefinition& first = *classes_.front();
+    auto fail = [&](std::string what) -> std::optional<Character> {
+        if (error) *error = std::move(what);
+        return std::nullopt;
+    };
+    const RaceDefinition* race_ = choices.race.empty() ? nullptr : race(choices.race);
+    if (!choices.race.empty() && !race_)
+        return fail("race: no race \"" + choices.race + "\"");
+    const BackgroundDefinition* background_ = choices.background.empty() ? nullptr : background(choices.background);
+    if (!choices.background.empty() && !background_)
+        return fail("background: no background \"" + choices.background + "\"");
 
     Character c;
     c.name = choices.name;
-    c.ancestry = choices.race;
+    c.ancestry = race_ ? race_->name : choices.race;
     c.notes = choices.notes;
     c.level = choices.level();
     c.xp = choices.xp;
@@ -414,23 +505,117 @@ std::optional<Character> Compendium::build(const Ruleset& rules, const Character
     c.hitDie = "1d" + std::to_string(first.hitDie);
     c.stats.setBase("speed", static_cast<float>(first.speed));
     c.stats.setBase("darkvision", static_cast<float>(first.darkvision));
-
-    const int con = c.abilityModifier(rules, "con");
-    int hp = std::max(1, first.hitDie + first.bonusHp + con);
-    for (size_t i = 1; i < classes_.size(); i++)
-        hp += std::max(1, classes_[i]->hitDie / 2 + 1 + con);
-    c.stats.setBase("maxHp", static_cast<float>(hp));
-    c.hp = hp;
-
     c.proficiencies = first.proficiencies;
     c.proficiencyRanks = first.proficiencyRanks;
     c.dcAbility = first.dcAbility;
     c.resources = first.resources;
-    for (const LevelChoice& level : choices.levels)
+
+    // Race and background: score changes, skills, speed and senses.
+    auto adjust = [&](const std::map<std::string, int>& abilities, const std::string& field) -> bool {
+        for (const auto& [ability, change] : abilities)
+        {
+            if (!rules.ability(ability))
+            {
+                if (error) *error = field + ": \"" + ability + "\" isn't an ability of this ruleset";
+                return false;
+            }
+            c.stats.setBase(ability, c.stats.base(ability) + static_cast<float>(change));
+        }
+        return true;
+    };
+    if (race_)
+    {
+        if (!adjust(race_->abilities, "race")) return std::nullopt;
+        c.proficiencies.insert(race_->proficiencies.begin(), race_->proficiencies.end());
+        if (race_->speed > 0) c.stats.setBase("speed", static_cast<float>(race_->speed));
+        c.stats.setBase("darkvision", static_cast<float>(std::max(first.darkvision, race_->darkvision)));
+    }
+    if (background_)
+    {
+        if (!adjust(background_->abilities, "background")) return std::nullopt;
+        c.proficiencies.insert(background_->proficiencies.begin(), background_->proficiencies.end());
+    }
+
+    // Feats: what the race and background give, then each level's picks in order, so a feat's
+    // requirements are judged on the character as it stood when it was taken.
+    auto rankIndex = [&](std::string_view rank) {
+        for (size_t i = 0; i < rules.proficiencyRanks.size(); i++)
+            if (rules.proficiencyRanks[i].id == rank) return static_cast<int>(i);
+        return -1;
+    };
+    std::set<std::string> taken;
+    auto take = [&](const FeatDefinition& feat) {
+        taken.insert(feat.id);
+        for (Modifier modifier : feat.modifiers)
+        {
+            modifier.source = "build:feat:" + feat.id;
+            c.stats.addModifier(std::move(modifier));
+        }
+        c.proficiencies.insert(feat.proficiencies.begin(), feat.proficiencies.end());
+        for (const auto& [target, rank] : feat.ranks)
+            if (!c.proficiencyRanks.contains(target) || rankIndex(rank) > rankIndex(c.proficiencyRank(rules, target)))
+                c.proficiencyRanks[target] = rank;
+        for (const auto& [id, resource] : feat.resources)
+        {
+            c.resources[id].max += resource.max;
+            c.resources[id].current += resource.max;
+        }
+    };
+    for (const auto* given : {race_ ? &race_->feats : nullptr, background_ ? &background_->feats : nullptr})
+        for (const std::string& id : given ? *given : std::vector<std::string>{})
+            if (const FeatDefinition* found = feat(id); found && !taken.contains(id))
+                take(*found);
+
+    std::set<std::string> classesSoFar;
+    for (size_t i = 0; i < choices.levels.size(); i++)
+    {
+        const LevelChoice& level = choices.levels[i];
+        classesSoFar.insert(level.classId);
         if (const auto skills = level.picks.find("skills"); skills != level.picks.end())
             c.proficiencies.insert(skills->second.begin(), skills->second.end());
+        const auto picked = level.picks.find("feats");
+        if (picked == level.picks.end())
+            continue;
+        const std::string field = "levels[" + std::to_string(i) + "].picks.feats: ";
+        for (const std::string& id : picked->second)
+        {
+            const FeatDefinition* found = feat(id);
+            if (!found)
+                return fail(field + "no feat \"" + id + "\"");
+            const FeatDefinition::Requirements& needs = found->needs;
+            if (taken.contains(id) && !found->repeatable)
+                return fail(field + "\"" + id + "\" is already taken");
+            if (static_cast<int>(i) + 1 < needs.level)
+                return fail(field + "\"" + id + "\" needs level " + std::to_string(needs.level));
+            if (!needs.races.empty() && std::find(needs.races.begin(), needs.races.end(), choices.race) == needs.races.end())
+                return fail(field + "\"" + id + "\" is for another race");
+            if (!needs.classes.empty() && std::none_of(needs.classes.begin(), needs.classes.end(), [&](const std::string& k) { return classesSoFar.contains(k); }))
+                return fail(field + "\"" + id + "\" is for another class");
+            for (const auto& [ability, least] : needs.abilities)
+                if (c.abilityScore(ability) < least)
+                    return fail(field + "\"" + id + "\" needs " + ability + " " + std::to_string(least));
+            for (const std::string& target : needs.proficiencies)
+            {
+                const bool trained = rules.proficiencyRanks.empty() ? c.proficiencies.contains(target)
+                                                                    : rankIndex(c.proficiencyRank(rules, target)) >= std::max(0, rankIndex(rules.proficientRank));
+                if (!trained)
+                    return fail(field + "\"" + id + "\" needs training in " + target);
+            }
+            take(*found);
+        }
+    }
+
+    // HP last, so race and feat changes to CON count.
+    const int con = c.abilityModifier(rules, "con");
+    int hp = std::max(1, first.hitDie + first.bonusHp + (race_ ? race_->bonusHp : 0) + con);
+    for (size_t i = 1; i < classes_.size(); i++)
+        hp += std::max(1, classes_[i]->hitDie / 2 + 1 + con);
+    c.stats.setBase("maxHp", static_cast<float>(hp));
+    c.hp = c.maxHp();
+
     if (!c.checkProficiencyRanks(rules, error)) return std::nullopt;
     giveItems(c, first.items);
+    if (background_) giveItems(c, background_->items);
     return c;
 }
 
