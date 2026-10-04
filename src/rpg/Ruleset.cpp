@@ -105,9 +105,9 @@ const RestDefinition* Ruleset::rest(std::string_view wanted) const
 
 int Ruleset::hitDie(std::string_view characterClass) const
 {
-    for (const auto& [name, sides] : hitDieByClass)
+    for (const auto& [className, sides] : hitDieByClass)
     {
-        if (name == characterClass)
+        if (className == characterClass)
             return sides;
     }
     return defaultHitDie;

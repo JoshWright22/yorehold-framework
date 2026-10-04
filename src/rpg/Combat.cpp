@@ -33,6 +33,18 @@ void Encounter::join(Character& character, int team)
     size_t at = 0;
     while (at < order_.size() && order_[at].initiative >= c.initiative)
         at++;
+    if (rules_.sharedTurns)
+    {
+        // An insertion must not split a block that has already begun or grant a second turn.
+        c.turnDone = true;
+        if (at <= blockFirst_)
+        {
+            blockFirst_++;
+            blockEnd_++;
+        }
+        else if (at < blockEnd_)
+            blockEnd_++;
+    }
     order_.insert(order_.begin() + static_cast<std::ptrdiff_t>(at), c);
     if (at <= current_)
         current_++;
@@ -90,7 +102,13 @@ void Encounter::start()
 
 void Encounter::beginTurn()
 {
-    Combatant& c = order_[current_];
+    refreshTurn(order_[current_]);
+    blockSerial_++;
+    addLog(order_[current_].character->name + "'s turn");
+}
+
+void Encounter::refreshTurn(Combatant& c)
+{
     conditionsEnded(*c.character, c.character->conditionEvent(rules_, "turnStart"));
     c.budget = {rules_.actionsPerTurn, rules_.bonusActions, true, c.character->speedSquares(rules_)};
     // Conditions can take the turn's actions or movement away.
@@ -102,7 +120,85 @@ void Encounter::beginTurn()
     }
     if (c.character->hasFlag(rules_, "cantMove"))
         c.budget.movementLeft = 0;
-    addLog(c.character->name + "'s turn");
+}
+
+bool Encounter::canSelectTurn(size_t index) const
+{
+    return rules_.sharedTurns && started_ && !finished() && index >= blockFirst_ && index < blockEnd_
+        && order_[index].team == blockTeam_ && !order_[index].turnDone && order_[index].standing();
+}
+
+bool Encounter::selectTurn(size_t index)
+{
+    if (!canSelectTurn(index)) return false;
+    if (current_ == index) return true;
+    current_ = index;
+    addLog(order_[current_].character->name + " resumes the shared turn");
+    return true;
+}
+
+void Encounter::nextSharedTurn()
+{
+    if (round_ > 0)
+    {
+        Combatant& ended = order_[current_];
+        ended.turnDone = true;
+        if (ended.standing())
+            conditionsEnded(*ended.character, ended.character->conditionEvent(rules_, "turnEnd"));
+        for (size_t i = blockFirst_; i < blockEnd_; i++)
+            if (canSelectTurn(i))
+            {
+                current_ = i;
+                addLog(order_[i].character->name + "'s turn");
+                return;
+            }
+    }
+    size_t at = round_ > 0 ? blockEnd_ : order_.size();
+    // A whole surprised side may pass; in that case the next round supplies a turn.
+    for (size_t tries = 0; tries < order_.size() * 2 + 1; tries++)
+    {
+        if (at >= order_.size())
+        {
+            at = 0;
+            if (round_ > 0)
+            {
+                for (Combatant& c : order_)
+                    conditionsEnded(*c.character, c.character->endRound(rules_, &random_));
+                round_++;
+                addLog("Round " + std::to_string(round_));
+            }
+            else
+                round_ = 1;
+            for (Combatant& c : order_) c.turnDone = false;
+        }
+        blockFirst_ = at;
+        blockTeam_ = order_[at].team;
+        while (at < order_.size() && order_[at].team == blockTeam_) at++;
+        blockEnd_ = at;
+        std::optional<size_t> first;
+        for (size_t i = blockFirst_; i < blockEnd_; i++)
+        {
+            Combatant& c = order_[i];
+            if (!c.standing()) c.turnDone = true;
+            if (c.turnDone) continue;
+            if (c.surprised)
+            {
+                c.surprised = false;
+                c.turnDone = true;
+                addLog(c.character->name + " is surprised and loses the turn");
+                continue;
+            }
+            refreshTurn(c);
+            if (!first) first = i;
+        }
+        if (first)
+        {
+            current_ = *first;
+            blockSerial_++;
+            addLog(order_[current_].character->name + "'s turn");
+            return;
+        }
+    }
 }
 
 void Encounter::conditionsEnded(const Character& character, const std::vector<std::string>& ids)
@@ -118,6 +214,11 @@ void Encounter::nextTurn()
 {
     if (!started_ || finished())
         return;
+    if (rules_.sharedTurns)
+    {
+        nextSharedTurn();
+        return;
+    }
     if (round_ > 0 && order_[current_].standing())
         conditionsEnded(*order_[current_].character, order_[current_].character->conditionEvent(rules_, "turnEnd"));
     // Twice round: a surprised combatant passes once and can then take the next turn that comes.

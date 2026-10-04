@@ -127,6 +127,7 @@ struct Ruleset
     int actionsPerTurn = 1;
     bool bonusActions = true;       // a bonus action each turn as well
     bool strikeCostsHands = false;  // a Strike costs one action per hand the weapon needs
+    bool sharedTurns = false;      // consecutive allies may interleave their turns
     int feetPerSquare = 5;
     int carryPerStrength = 15; // pounds per point of the first ability (strength)
     int magicItemLimit = 0;    // magic items one character may carry (0 = no limit)

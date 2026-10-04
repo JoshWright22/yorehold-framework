@@ -195,6 +195,21 @@ Every effect step also accepts `ifFlag`: it only runs for subjects carrying that
 
 `Character` includes inventory, equipment, resources, conditions, HP/temp HP, checks and saves. `Encounter` handles initiative, turns, action/movement budgets, attacks, damage and condition durations. Empty encounters and negative movement requests are rejected. Which actions are legal, and the UI flow around them, remain client responsibilities.
 
+### Shared turns
+
+`Ruleset::sharedTurns` (JSON `sharedTurns`, default false) makes consecutive combatants on one team
+an active block. `Encounter::blockFirst()` and `blockEnd()` give its half-open range; `blockSerial()`
+changes only when a new block begins. All eligible members refresh actions, movement, reactions and
+`turnStart` conditions together. `canSelectTurn(index)` and `selectTurn(index)` allow any unfinished,
+standing member to act without refreshing anything. `nextTurn()` raises that member's `turnEnd`,
+marks it done, and chooses another unfinished member before advancing to the next block. Round-end
+conditions still tick once when initiative wraps. Surprise skips a member's first block.
+
+Blocks follow the full initiative list, including down or withdrawn entries. Reinforcements keep
+their rolled position but first act next round, so inserting one cannot interrupt a block already
+in progress. The client decides who may select a member and waits for movement or other pending
+actions to finish before switching. With `sharedTurns: false`, turns remain sequential.
+
 ### Movement reactions
 
 `ReactionDefinition` names a movement trigger (`leavesReach` or `entersReach`) and an action, or uses `readied: true` to run the action a creature recorded. `matches(before, after, reach)` tests distances on each edge of a movement path. `loadReactions(files, folder, actions, reactions)` reads `<id>.json` files, checks action references, sorts by `order` then id, and changes nothing on an error.

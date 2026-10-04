@@ -26,6 +26,7 @@ struct Combatant
     TurnBudget budget;
     bool out = false;       // left the fight without going down (gave up, got away): no more turns, can't be attacked
     bool surprised = false; // caught unaware: loses its first turn
+    bool turnDone = false; // shared turns: ended or skipped in this round
     bool standing() const { return !out && !character->down(); }
 };
 
@@ -54,6 +55,12 @@ public:
     size_t currentIndex() const { return current_; }
     Combatant& current() { return order_.at(current_); }
     const std::vector<Combatant>& order() const { return order_; }
+    // The active block is [blockFirst, blockEnd). Without shared turns it contains only current.
+    size_t blockFirst() const { return rules_.sharedTurns ? blockFirst_ : current_; }
+    size_t blockEnd() const { return rules_.sharedTurns ? blockEnd_ : current_ + 1; }
+    uint64_t blockSerial() const { return blockSerial_; }
+    bool canSelectTurn(size_t index) const;
+    bool selectTurn(size_t index); // preserves every member's budgets and conditions
 
     // Joins a fight already going (reinforcements): rolls initiative and takes its place in the order.
     void join(Character& character, int team);
@@ -97,6 +104,8 @@ public:
 
 private:
     void beginTurn();
+    void refreshTurn(Combatant& combatant);
+    void nextSharedTurn();
     void addLog(std::string line);
     void conditionsEnded(const Character& character, const std::vector<std::string>& ids); // into the log
 
@@ -106,6 +115,9 @@ private:
     size_t current_ = 0;
     int round_ = 0;
     bool started_ = false;
+    size_t blockFirst_ = 0, blockEnd_ = 0;
+    int blockTeam_ = 0;
+    uint64_t blockSerial_ = 0;
     std::vector<std::string> log_;
 };
 

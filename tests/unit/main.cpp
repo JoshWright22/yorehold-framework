@@ -4,6 +4,7 @@
 #include "QuestTests.h"
 #include "ConditionTests.h"
 #include "EffectTests.h"
+#include "CombatTests.h"
 #include "CameraControlTests.h"
 #include "CutsceneTests.h"
 
@@ -1471,6 +1472,7 @@ int main()
         {"Effects", regression::effects},
         {"Actions", regression::actions},
         {"Reactions", regression::reactions},
+        {"Shared turns", regression::sharedTurns},
         {"Camera controls", regression::cameraControls},
         {"Cutscenes", regression::cutscenes},
         {"Tweens", tweens},

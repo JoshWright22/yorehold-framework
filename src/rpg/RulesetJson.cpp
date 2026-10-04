@@ -51,7 +51,7 @@ std::string Ruleset::toJson() const
         {"scoreMin", scoreMin}, {"scoreMax", scoreMax}, {"baseArmorClass", baseArmorClass},
         {"armorClassAbility", armorClassAbility}, {"initiativeAbility", initiativeAbility},
         {"proficiencyByLevel", proficiencyByLevel}, {"xpForLevel", xpForLevel},
-        {"actionsPerTurn", actionsPerTurn}, {"bonusActions", bonusActions}, {"strikeCostsHands", strikeCostsHands},
+        {"actionsPerTurn", actionsPerTurn}, {"bonusActions", bonusActions}, {"strikeCostsHands", strikeCostsHands}, {"sharedTurns", sharedTurns},
         {"feetPerSquare", feetPerSquare}, {"carryPerStrength", carryPerStrength},
         {"magicItemLimit", magicItemLimit}, {"passiveBase", passiveBase}};
     j["abilities"] = J::array(); j["skills"] = J::array(); j["conditions"] = J::array(); j["rests"] = J::array();
@@ -62,7 +62,7 @@ std::string Ruleset::toJson() const
     j["defaultHitDie"] = defaultHitDie;
     j["hitDieAbility"] = hitDieAbility;
     j["hitDieByClass"] = J::object();
-    for (const auto& [name, sides] : hitDieByClass) j["hitDieByClass"][name] = sides;
+    for (const auto& [className, sides] : hitDieByClass) j["hitDieByClass"][className] = sides;
     for (const auto& a : abilities) j["abilities"].push_back({{"id", a.id}, {"name", a.name}});
     for (const auto& s : skills) j["skills"].push_back({{"id", s.id}, {"name", s.name}, {"ability", s.ability}});
     for (const auto& c : conditions)
@@ -90,6 +90,7 @@ std::optional<Ruleset> Ruleset::fromJson(std::string_view json, std::string* err
         r.actionsPerTurn = j.value("actionsPerTurn", r.actionsPerTurn);
         r.bonusActions = j.value("bonusActions", r.bonusActions);
         r.strikeCostsHands = j.value("strikeCostsHands", r.strikeCostsHands);
+        r.sharedTurns = j.value("sharedTurns", r.sharedTurns);
         if (r.actionsPerTurn < 1 || r.actionsPerTurn > 10) throw std::invalid_argument("actionsPerTurn is 1 to 10");
         r.feetPerSquare = j.value("feetPerSquare", r.feetPerSquare);
         r.carryPerStrength = j.value("carryPerStrength", r.carryPerStrength);
