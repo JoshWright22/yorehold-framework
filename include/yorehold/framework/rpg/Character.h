@@ -5,6 +5,7 @@
 #include "yorehold/framework/rpg/Stats.h"
 
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -12,6 +13,8 @@
 
 namespace yh
 {
+
+struct ActionDefinition;
 
 struct Item
 {
@@ -27,6 +30,7 @@ struct Item
     bool magic = false; // counts toward the ruleset's magic item limit
     bool equipped = false;
     std::vector<Modifier> modifiers; // apply while equipped
+    std::shared_ptr<const ActionDefinition> use; // optional consumable action, preserved with the item
 };
 
 // Anything with a current/max that gets spent: spell slots, rage uses, arrows...
@@ -149,6 +153,8 @@ public:
     void endRound();
 
     float carriedWeight() const;
+    // Removes one unequipped unit, keeping the remaining equipment's modifier sources valid.
+    bool removeItem(size_t index);
     float carryCapacity(const Ruleset& rules) const;
     // How weighed down: 0 = free, 1 = slowed, 2 = can't move (the ruleset's shares of capacity).
     int encumbrance(const Ruleset& rules) const;

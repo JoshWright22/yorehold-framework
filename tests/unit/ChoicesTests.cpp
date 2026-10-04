@@ -2,6 +2,7 @@
 #include "Checks.h"
 
 #include <yorehold/framework/rpg/CharacterChoices.h>
+#include <yorehold/framework/rpg/Action.h>
 #include <yorehold/framework/rpg/Compendium.h>
 #include <yorehold/framework/rpg/Merchant.h>
 #include <yorehold/framework/assets/FileSystem.h>
@@ -458,6 +459,27 @@ void scoreMethods()
 
 void characterChoices()
 {
+    const auto consumable = yh::Compendium::itemFromJson(R"({"id":"tonic","hands":2,"quantity":2,
+        "use":{"target":{"kind":"creature","side":"ally","downed":true},"effects":[{"do":"heal","dice":"2d4+2"}]}})");
+    CHECK(consumable && consumable->use && consumable->use->cost == 2 && consumable->use->allowsDowned);
+    if (consumable)
+    {
+        yh::Character sheet;
+        sheet.inventory.push_back(*consumable);
+        auto restored = yh::Character::fromJson(sheet.toJson());
+        CHECK(restored && restored->inventory[0].use && restored->inventory[0].use->json == consumable->use->json);
+        const auto definition = yh::Compendium::itemFromJson(yh::Compendium::itemToJson(*consumable));
+        CHECK(definition && definition->use && definition->use->json == consumable->use->json);
+        yh::Merchant merchant;
+        merchant.inventory.push_back(*consumable);
+        const auto savedShop = yh::Merchant::fromJson(merchant.toJson(), {});
+        CHECK(savedShop && savedShop->inventory[0].use && savedShop->inventory[0].use->json == consumable->use->json);
+        CHECK(sheet.removeItem(0) && sheet.inventory[0].quantity == 1);
+        CHECK(sheet.removeItem(0) && sheet.inventory.empty() && !sheet.removeItem(0));
+    }
+    CHECK(!yh::Compendium::itemFromJson(R"({"id":"bad","use":{"effects":[{"do":"typo"}]}})"));
+    CHECK(!yh::Compendium::itemFromJson(R"({"id":"bad","use":{"effects":[]}})"));
+    CHECK(!yh::Compendium::itemFromJson(R"({"id":"bad","slot":"mainHand","use":{"effects":[{"do":"heal","dice":1}]}})"));
     auto compendium = classes();
     std::string error;
     auto shop = yh::Merchant::fromJson(R"({"coins":100,"buyMultiplier":1.25,"sellMultiplier":0.5,

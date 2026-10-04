@@ -383,6 +383,25 @@ float Character::carriedWeight() const
     return total;
 }
 
+bool Character::removeItem(size_t index)
+{
+    if (index >= inventory.size() || inventory[index].equipped || inventory[index].quantity < 1)
+        return false;
+    if (--inventory[index].quantity > 0)
+        return true;
+    std::vector<bool> worn;
+    for (size_t i = index + 1; i < inventory.size(); i++)
+    {
+        worn.push_back(inventory[i].equipped);
+        unequip(i);
+    }
+    inventory.erase(inventory.begin() + static_cast<std::ptrdiff_t>(index));
+    for (size_t i = 0; i < worn.size(); i++)
+        if (worn[i]) equip(index + i);
+    hp = std::min(hp, maxHp());
+    return true;
+}
+
 float Character::carryCapacity(const Ruleset& rules) const
 {
     const std::string& strength = rules.abilities.empty() ? std::string("str") : rules.abilities.front().id;

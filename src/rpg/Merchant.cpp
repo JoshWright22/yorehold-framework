@@ -43,23 +43,6 @@ void add(std::vector<Item>& inventory, Item item)
     inventory.push_back(std::move(item));
 }
 
-// Removing an entry changes the sources of every later equipped item's modifiers.
-void remove(Character& sheet, size_t index)
-{
-    if (--sheet.inventory[index].quantity > 0)
-        return;
-    std::vector<bool> worn;
-    for (size_t i = index + 1; i < sheet.inventory.size(); i++)
-    {
-        worn.push_back(sheet.inventory[i].equipped);
-        sheet.unequip(i);
-    }
-    sheet.inventory.erase(sheet.inventory.begin() + static_cast<std::ptrdiff_t>(index));
-    for (size_t i = 0; i < worn.size(); i++)
-        if (worn[i]) sheet.equip(index + i);
-    sheet.hp = std::min(sheet.hp, sheet.maxHp());
-}
-
 }
 
 int Merchant::buyPrice(const Item& item) const { return price(item, buyMultiplier, true); }
@@ -107,7 +90,7 @@ bool Merchant::sell(Character& seller, size_t item)
     if (!canSell(seller, item)) return false;
     const int cost = sellPrice(seller.inventory[item]);
     add(inventory, seller.inventory[item]);
-    remove(seller, item);
+    seller.removeItem(item);
     seller.coins += cost;
     coins -= cost;
     return true;

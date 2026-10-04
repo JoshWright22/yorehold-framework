@@ -1,4 +1,5 @@
 #include "yorehold/framework/rpg/Compendium.h"
+#include "yorehold/framework/rpg/Action.h"
 
 #include "yorehold/framework/assets/FileSystem.h"
 
@@ -57,6 +58,21 @@ Item itemFrom(const json& j)
     item.value = j.value("value", 0);
     item.quantity = j.value("quantity", 1);
     item.magic = j.value("magic", false);
+    if (j.contains("use"))
+    {
+        auto use = j.at("use");
+        if (!use.is_object() || !item.slot.empty()) throw std::invalid_argument("Item use needs an object on a carried-only item");
+        if (!use.contains("id")) use["id"] = item.id;
+        if (!use.contains("name")) use["name"] = item.name;
+        if (!use.contains("cost")) use["cost"] = item.hands;
+        use["general"] = false;
+        std::string error;
+        auto action = ActionDefinition::fromJson(use.dump(), &error);
+        if (!action) throw std::invalid_argument("Item use: " + error);
+        if (action->effect.empty() || action->costsHands || action->endsTurn || !action->readies.empty())
+            throw std::invalid_argument("Item use needs effects, a numeric cost, and cannot end a turn or ready an action");
+        item.use = std::make_shared<ActionDefinition>(std::move(*action));
+    }
     for (const json& m : j.value("modifiers", json::array()))
     {
         Modifier mod{m.at("stat").get<std::string>(), opFromName(m.value("op", "add")), m.at("value").get<float>(), ""};
@@ -217,9 +233,11 @@ std::string Compendium::itemToJson(const Item& item)
     json modifiers = json::array();
     for (const Modifier& m : item.modifiers)
         modifiers.push_back({{"stat", m.stat}, {"op", opName(m.op)}, {"value", m.value}});
-    return json{{"id", item.id}, {"name", item.name}, {"slot", item.slot}, {"damage", item.damage},
+    json j{{"id", item.id}, {"name", item.name}, {"slot", item.slot}, {"damage", item.damage},
         {"attackAbility", item.attackAbility}, {"hands", item.hands}, {"weight", item.weight}, {"value", item.value},
-        {"quantity", item.quantity}, {"magic", item.magic}, {"modifiers", modifiers}}.dump(2);
+        {"quantity", item.quantity}, {"magic", item.magic}, {"modifiers", modifiers}};
+    if (item.use) j["use"] = json::parse(item.use->json);
+    return j.dump(2);
 }
 
 std::string Compendium::classToJson(const ClassDefinition& c)

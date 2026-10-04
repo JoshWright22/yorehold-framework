@@ -1,6 +1,8 @@
 // Character <-> JSON. Kept apart from Character.cpp so only this file pays for including nlohmann/json.
 
 #include "yorehold/framework/rpg/Character.h"
+#include "yorehold/framework/rpg/Action.h"
+#include "yorehold/framework/rpg/Compendium.h"
 
 #include <nlohmann/json.hpp>
 
@@ -93,6 +95,7 @@ std::string Character::toJson() const
             {"attackAbility", item.attackAbility}, {"hands", item.hands}, {"weight", item.weight}, {"value", item.value},
             {"quantity", item.quantity}, {"magic", item.magic}, {"equipped", item.equipped}, {"modifiers", itemModifiers},
         });
+        if (item.use) items.back()["use"] = json::parse(item.use->json);
     }
     j["inventory"] = items;
     j["coins"] = coins;
@@ -186,6 +189,13 @@ std::optional<Character> Character::fromJson(std::string_view text, std::string*
                 item.quantity = i.value("quantity", 1);
                 item.magic = i.value("magic", false);
                 item.equipped = i.value("equipped", false);
+                if (i.contains("use"))
+                {
+                    std::string problem;
+                    const auto parsed = Compendium::itemFromJson(i.dump(), &problem);
+                    if (!parsed) throw std::invalid_argument("Saved consumable: " + problem);
+                    item.use = parsed->use;
+                }
                 if (i.contains("modifiers"))
                 {
                     for (const json& m : i["modifiers"])

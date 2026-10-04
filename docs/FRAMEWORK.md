@@ -413,6 +413,17 @@ actions to finish before switching. With `sharedTurns: false`, turns remain sequ
 
 Fields: `id` (required, matching the file), `name` (defaults to id), `trigger` (required), either `action` or `readied: true`, `order` (default 0), and `promptSeconds` (0.1 to 30, default 2). A referenced action must not end the turn or ready another action. The host decides when to offer it and how to show a prompt. `Encounter::useReaction(index)` spends the creature's one reaction, regardless of the action's turn cost; down, withdrawn or `cantAct` creatures cannot react. The budget refreshes on its own turn.
 
+### Consumable items
+
+An item may carry a `use` object in the action format, with `effects`, optional `save`,
+`target`, `requires` and numeric `cost`. Its id and name default to the item's; cost defaults
+to its `hands`. Use must contain effects, cannot ready or end a turn, and is only valid on
+carried-only items (empty `slot`). `Item::use` holds the parsed immutable action. Character,
+compendium and merchant JSON preserve it, including on saved items absent from a compendium.
+The game checks the effect against its ruleset and supplies permissions, reach, dice and targets.
+`Character::removeItem` spends one unequipped unit and rebinds later equipment modifier sources
+when the last unit disappears. Failed removals leave the inventory unchanged.
+
 ### Merchants
 
 `yh::Merchant` owns a finite `coins` purse and item inventory. Content JSON uses
