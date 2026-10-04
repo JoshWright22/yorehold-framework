@@ -30,6 +30,7 @@
 #include <yorehold/framework/graphics/Particles.h>
 #include <yorehold/framework/rpg/Character.h>
 #include <yorehold/framework/rpg/Combat.h>
+#include <yorehold/framework/rpg/Dialogue.h>
 #include <yorehold/framework/rpg/Compendium.h>
 #include <yorehold/framework/save/SaveFile.h>
 #include <yorehold/framework/text/RichText.h>
@@ -778,13 +779,40 @@ void surprise()
     fight.withdraw(goblinAt, "surrenders");
     CHECK(!fight.order()[goblinAt].standing() && !fight.finished()
         && std::find(fight.log().begin(), fight.log().end(), "Goblin surrenders") != fight.log().end());
+    if (fight.current().character == &goblin)
+        fight.nextTurn();
     for (int i = 0; i < 6; i++)
     {
         CHECK(fight.current().character != &goblin);
         fight.nextTurn();
     }
-    fight.withdraw(bossAt);
+    // Reinforcements join mid-fight without taking the current turn away.
+    yh::Character guard = yh::makeRandomCharacter(rules, "Guard", "Fighter", random);
+    const yh::Character* before = fight.current().character;
+    fight.join(guard, 1);
+    CHECK(fight.current().character == before && fight.order().size() == 4);
+    bool guardActed = false;
+    for (int i = 0; i < 4; i++)
+    {
+        fight.nextTurn();
+        guardActed |= fight.current().character == &guard;
+    }
+    CHECK(guardActed);
+    for (size_t i = 0; i < fight.order().size(); i++)
+        if (fight.order()[i].character == &boss || fight.order()[i].character == &guard)
+            fight.withdraw(i);
     CHECK(fight.finished() && fight.winningTeam() == 0);
+
+    // Dialogue can ask the game to do things ("do"), collected in order.
+    const auto talk = yh::Dialogue::fromJson(R"({"id":"yield","start":"a","nodes":[
+        {"id":"a","text":"Mercy!","do":["kneel"],"choices":[{"id":"go","text":"Go.","do":["release"],"next":""}]}]})");
+    CHECK(talk && talk->nodes[0].flags.actions == std::vector<std::string>{"kneel"});
+    yh::DialogueSession session(*talk);
+    CHECK(session.takeActions() == std::vector<std::string>{"kneel"} && session.takeActions().empty());
+    session.choose("go");
+    CHECK(session.takeActions() == std::vector<std::string>{"release"});
+    CHECK(talk && yh::Dialogue::fromJson(talk->toJson()) && yh::Dialogue::fromJson(talk->toJson())->nodes[0].choices[0].flags.actions.size() == 1);
+    CHECK(!yh::Dialogue::fromJson(R"({"id":"x","start":"a","nodes":[{"id":"a","do":[""]}]})"));
 }
 
 void skins()

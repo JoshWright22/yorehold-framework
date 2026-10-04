@@ -55,10 +55,12 @@ public:
     Combatant& current() { return order_.at(current_); }
     const std::vector<Combatant>& order() const { return order_; }
 
+    // Joins a fight already going (reinforcements): rolls initiative and takes its place in the order.
+    void join(Character& character, int team);
     // Before start(): everyone on `team` loses their first turn.
     void surprise(int team);
     // Takes a combatant out of the fight for good without dropping it (surrendered, fled).
-    // If it's their turn, the turn passes on.
+    // If it's their turn, call nextTurn() to pass it on.
     void withdraw(size_t index, const std::string& why = {});
 
     // Ends the current turn; skips anyone who's down, out or surprised. Ticks conditions when a round ends.

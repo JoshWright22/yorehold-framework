@@ -35,18 +35,21 @@ bool overlap(const std::vector<std::string>& a, const std::vector<std::string>& 
 
 bool validChanges(const DialogueFlags& flags)
 {
-    return validFlags(flags.set) && validFlags(flags.clear) && !overlap(flags.set, flags.clear);
+    return validFlags(flags.set) && validFlags(flags.clear) && !overlap(flags.set, flags.clear)
+        && std::none_of(flags.actions.begin(), flags.actions.end(), [](const std::string& action) { return action.empty(); });
 }
 
 DialogueFlags readFlags(const Json& json)
 {
-    return {json.value("set", std::vector<std::string>{}), json.value("clear", std::vector<std::string>{})};
+    return {json.value("set", std::vector<std::string>{}), json.value("clear", std::vector<std::string>{}),
+        json.value("do", std::vector<std::string>{})};
 }
 
 void writeFlags(Json& json, const DialogueFlags& flags)
 {
     if (!flags.set.empty()) json["set"] = flags.set;
     if (!flags.clear.empty()) json["clear"] = flags.clear;
+    if (!flags.actions.empty()) json["do"] = flags.actions;
 }
 
 }
@@ -225,6 +228,7 @@ void DialogueSession::apply(const DialogueFlags& changes)
 {
     for (const auto& flag : changes.clear) flags_.erase(flag);
     flags_.insert(changes.set.begin(), changes.set.end());
+    actions_.insert(actions_.end(), changes.actions.begin(), changes.actions.end());
 }
 
 void DialogueSession::enter(std::string id)

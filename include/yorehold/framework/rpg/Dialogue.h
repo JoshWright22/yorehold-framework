@@ -7,6 +7,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace yh
@@ -16,6 +17,9 @@ struct DialogueFlags
 {
     std::vector<std::string> set;
     std::vector<std::string> clear;
+    // "do": things for the game to carry out ("release", "attack"...). The game decides what each
+    // means; ones it doesn't know are ignored. Collected with DialogueSession::takeActions().
+    std::vector<std::string> actions;
 };
 
 struct DialogueCheck
@@ -88,6 +92,8 @@ public:
     // natural 1/20 do not automatically override a skill check.
     std::optional<DialogueResult> choose(std::string_view choice, const CheckRoll& rollCheck = {});
     void close() { current_.clear(); }
+    // The "do" actions reached since the last call, in order.
+    std::vector<std::string> takeActions() { return std::exchange(actions_, {}); }
 
     // Versioned state for a chapter save. Restore validates the document before changing anything.
     // Node entry effects are already in the saved flags and are not applied a second time.
@@ -104,6 +110,7 @@ private:
     std::string current_;
     std::set<std::string> flags_;
     std::vector<DialogueResult> history_;
+    std::vector<std::string> actions_;
 };
 
 }

@@ -15,6 +15,29 @@ void Encounter::add(Character& character, int team)
     order_.push_back(c);
 }
 
+void Encounter::join(Character& character, int team)
+{
+    if (!started_)
+    {
+        add(character, team);
+        return;
+    }
+    for (const auto& c : order_) if (c.character == &character) return;
+    Combatant c;
+    c.character = &character;
+    c.team = team;
+    c.initiativeRoll = rollD20(character.initiativeModifier(rules_), Advantage::None, random_);
+    c.initiative = c.initiativeRoll.total;
+    addLog(character.name + " joins the fight, initiative " + c.initiativeRoll.describe());
+    // After everyone who rolled at least as high; whoever's turn it is keeps it.
+    size_t at = 0;
+    while (at < order_.size() && order_[at].initiative >= c.initiative)
+        at++;
+    order_.insert(order_.begin() + static_cast<std::ptrdiff_t>(at), c);
+    if (at <= current_)
+        current_++;
+}
+
 void Encounter::surprise(int team)
 {
     if (started_) return;
@@ -30,8 +53,6 @@ void Encounter::withdraw(size_t index, const std::string& why)
     order_[index].out = true;
     if (!why.empty())
         addLog(order_[index].character->name + " " + why);
-    if (started_ && index == current_)
-        nextTurn();
 }
 
 void Encounter::start()
