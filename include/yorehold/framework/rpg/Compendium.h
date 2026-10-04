@@ -33,6 +33,9 @@ struct ClassDefinition
     std::string dcAbility;
     std::map<std::string, Resource> resources;
     std::vector<std::string> items; // item ids, equipped in order where a slot is free
+    // Row n-1 is what reaching level n in this class brings. Empty for classes written before
+    // level tables: their levels add HP only, and feat and skill picks are not limited.
+    std::vector<ClassLevel> levels;
 };
 
 // How a creature looks on the map. Players' art plugs in through `image`.

@@ -149,6 +149,13 @@ std::optional<ClassDefinition> Compendium::classFromJson(std::string_view text, 
         c.resources = resourcesFrom(j);
         if (c.dcAbility.size() > 64) throw std::invalid_argument("DC ability is too long");
         c.items = j.value("items", std::vector<std::string>{});
+        if (j.contains("levels"))
+        {
+            std::string e;
+            std::optional<std::vector<ClassLevel>> levels = classLevelsFromJson(j.at("levels").dump(), &e);
+            if (!levels) throw std::invalid_argument(e);
+            c.levels = std::move(*levels);
+        }
         if (!validId(c.id)) throw std::invalid_argument("Class ids use a-z, 0-9, - and _");
         if (c.hitDie < 1 || c.hitDie > 100 || c.speed < 0 || c.speed > 1000 || c.bonusHp < 0 || c.bonusHp > 1000
             || c.darkvision < 0 || c.darkvision > 10000)
@@ -209,9 +216,11 @@ std::string Compendium::itemToJson(const Item& item)
 
 std::string Compendium::classToJson(const ClassDefinition& c)
 {
-    return json{{"id", c.id}, {"name", c.name}, {"description", c.description}, {"hitDie", c.hitDie}, {"speed", c.speed},
+    json j{{"id", c.id}, {"name", c.name}, {"description", c.description}, {"hitDie", c.hitDie}, {"speed", c.speed},
         {"darkvision", c.darkvision}, {"bonusHp", c.bonusHp}, {"proficiencies", c.proficiencies}, {"items", c.items},
-        {"proficiencyRanks", c.proficiencyRanks}, {"dcAbility", c.dcAbility}, {"resources", resourcesJson(c.resources)}}.dump(2);
+        {"proficiencyRanks", c.proficiencyRanks}, {"dcAbility", c.dcAbility}, {"resources", resourcesJson(c.resources)}};
+    if (!c.levels.empty()) j["levels"] = json::parse(classLevelsToJson(c.levels));
+    return j.dump(2);
 }
 
 std::string Compendium::creatureToJson(const CreatureDefinition& c)
@@ -543,23 +552,29 @@ std::optional<Character> Compendium::build(const Ruleset& rules, const Character
             if (rules.proficiencyRanks[i].id == rank) return static_cast<int>(i);
         return -1;
     };
-    std::set<std::string> taken;
-    auto take = [&](const FeatDefinition& feat) {
-        taken.insert(feat.id);
-        for (Modifier modifier : feat.modifiers)
+    auto raise = [&](const std::map<std::string, std::string>& ranks) {
+        for (const auto& [target, rank] : ranks)
+            if (!c.proficiencyRanks.contains(target) || rules.proficiencyRanks.empty() || rankIndex(rank) > rankIndex(c.proficiencyRank(rules, target)))
+                c.proficiencyRanks[target] = rank;
+    };
+    auto grant = [&](const Grants& gives, const std::string& source) {
+        for (Modifier modifier : gives.modifiers)
         {
-            modifier.source = "build:feat:" + feat.id;
+            modifier.source = source;
             c.stats.addModifier(std::move(modifier));
         }
-        c.proficiencies.insert(feat.proficiencies.begin(), feat.proficiencies.end());
-        for (const auto& [target, rank] : feat.ranks)
-            if (!c.proficiencyRanks.contains(target) || rankIndex(rank) > rankIndex(c.proficiencyRank(rules, target)))
-                c.proficiencyRanks[target] = rank;
-        for (const auto& [id, resource] : feat.resources)
+        c.proficiencies.insert(gives.proficiencies.begin(), gives.proficiencies.end());
+        raise(gives.ranks);
+        for (const auto& [id, resource] : gives.resources)
         {
             c.resources[id].max += resource.max;
             c.resources[id].current += resource.max;
         }
+    };
+    std::set<std::string> taken;
+    auto take = [&](const FeatDefinition& feat) {
+        taken.insert(feat.id);
+        grant(feat.gives, "build:feat:" + feat.id);
     };
     for (const auto* given : {race_ ? &race_->feats : nullptr, background_ ? &background_->feats : nullptr})
         for (const std::string& id : given ? *given : std::vector<std::string>{})
@@ -567,22 +582,50 @@ std::optional<Character> Compendium::build(const Ruleset& rules, const Character
                 take(*found);
 
     std::set<std::string> classesSoFar;
+    std::map<std::string, int> classLevels;
+    std::map<std::string, std::map<int, int>> slotsByClass; // each class's slot row at its level
     for (size_t i = 0; i < choices.levels.size(); i++)
     {
         const LevelChoice& level = choices.levels[i];
+        const ClassDefinition& definition = *classes_[i];
         classesSoFar.insert(level.classId);
+        const int classLevel = ++classLevels[level.classId];
+        const bool tabled = !definition.levels.empty();
+        const ClassLevel* row = classLevel <= static_cast<int>(definition.levels.size()) ? &definition.levels[classLevel - 1] : nullptr;
+        if (row)
+        {
+            for (const ClassFeature& feature : row->features)
+                grant(feature.gives, "build:feature:" + definition.id + ":" + feature.id);
+            raise(row->ranks);
+            if (!row->slots.empty()) slotsByClass[definition.id] = row->slots;
+        }
+
+        const std::string at = "levels[" + std::to_string(i) + "].picks.";
         if (const auto skills = level.picks.find("skills"); skills != level.picks.end())
+        {
+            const size_t offered = row ? static_cast<size_t>(row->skills) : 0;
+            if (tabled && skills->second.size() > offered)
+                return fail(at + "skills: " + std::to_string(skills->second.size()) + " picked, this level offers " + std::to_string(offered));
             c.proficiencies.insert(skills->second.begin(), skills->second.end());
+        }
         const auto picked = level.picks.find("feats");
         if (picked == level.picks.end())
             continue;
-        const std::string field = "levels[" + std::to_string(i) + "].picks.feats: ";
+        const std::string field = at + "feats: ";
+        std::vector<std::string> open = row ? row->feats : std::vector<std::string>{}; // kinds not yet used at this level
         for (const std::string& id : picked->second)
         {
             const FeatDefinition* found = feat(id);
             if (!found)
                 return fail(field + "no feat \"" + id + "\"");
             const FeatDefinition::Requirements& needs = found->needs;
+            if (tabled)
+            {
+                const auto slot = std::find(open.begin(), open.end(), found->kind);
+                if (slot == open.end())
+                    return fail(field + "\"" + id + "\" is a " + found->kind + " feat, and this level has no " + found->kind + " feat to choose");
+                open.erase(slot);
+            }
             if (taken.contains(id) && !found->repeatable)
                 return fail(field + "\"" + id + "\" is already taken");
             if (static_cast<int>(i) + 1 < needs.level)
@@ -604,6 +647,14 @@ std::optional<Character> Compendium::build(const Ruleset& rules, const Character
             take(*found);
         }
     }
+    // Spell slots: for each slot level, the most any one class's row gives, so a second casting
+    // class widens the choice of spells rather than stacking slots.
+    std::map<int, int> slots;
+    for (const auto& [classId, row] : slotsByClass)
+        for (const auto& [slotLevel, count] : row)
+            slots[slotLevel] = std::max(slots[slotLevel], count);
+    for (const auto& [slotLevel, count] : slots)
+        if (count > 0) c.resources["slots-" + std::to_string(slotLevel)] = {count, count};
 
     // HP last, so race and feat changes to CON count.
     const int con = c.abilityModifier(rules, "con");

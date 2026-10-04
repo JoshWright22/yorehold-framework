@@ -12,6 +12,16 @@
 namespace yh
 {
 
+// What a feat or a class feature does to a sheet. Plain data; anything that acts in play grows
+// from the effects vocabulary.
+struct Grants
+{
+    std::vector<Modifier> modifiers;      // on the sheet for good: "maxHp", "speed", "ac", "attack"...
+    std::set<std::string> proficiencies;  // trained in these
+    std::map<std::string, std::string> ranks;  // raised to at least this rank
+    std::map<std::string, Resource> resources; // added to these maximums (started if new)
+};
+
 // A playable people: what being one of them adds to a sheet. Scores change by `abilities`, speed
 // replaces the class's when set, darkvision is the better of the two, and its feats come free.
 struct RaceDefinition
@@ -64,11 +74,28 @@ struct FeatDefinition
     };
     Requirements needs;
 
-    // What it gives.
-    std::vector<Modifier> modifiers;      // on the sheet for good: "maxHp", "speed", "ac", "attack"...
-    std::set<std::string> proficiencies;  // trained in these
-    std::map<std::string, std::string> ranks;  // raised to at least this rank
-    std::map<std::string, Resource> resources; // added to these maximums (started if new)
+    Grants gives;
+};
+
+// Something a class gives at one of its levels: named for the sheet, doing what a feat does.
+struct ClassFeature
+{
+    std::string id;
+    std::string name;
+    std::string description;
+    Grants gives;
+};
+
+// One row of a class's level table: what reaching that level in the class brings.
+struct ClassLevel
+{
+    std::vector<ClassFeature> features;
+    std::map<std::string, std::string> ranks; // raised to at least this rank
+    std::vector<std::string> feats; // the kinds of feat this level lets the player pick, one each
+    int skills = 0;                 // skills the player may pick to train
+    // Spell slots by slot level, as totals at this class level. A row without them keeps the
+    // previous row's.
+    std::map<int, int> slots;
 };
 
 // The player options a ruleset offers, read from its folder: races/, backgrounds/ and feats/,
@@ -76,5 +103,8 @@ struct FeatDefinition
 std::optional<RaceDefinition> raceFromJson(std::string_view json, std::string* error = nullptr);
 std::optional<BackgroundDefinition> backgroundFromJson(std::string_view json, std::string* error = nullptr);
 std::optional<FeatDefinition> featFromJson(std::string_view json, std::string* error = nullptr);
+// A class file's "levels" array; errors name the row and field ("levels[4].slots.3: ...").
+std::optional<std::vector<ClassLevel>> classLevelsFromJson(std::string_view json, std::string* error = nullptr);
+std::string classLevelsToJson(const std::vector<ClassLevel>& levels);
 
 }

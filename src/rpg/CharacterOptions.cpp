@@ -1,5 +1,6 @@
-// Races, backgrounds and feats <-> JSON. Strict: an unknown field or a wrong type names the field,
-// so a typo in a ruleset file shows up when it loads rather than as a feat that quietly does nothing.
+// Races, backgrounds, feats and class level tables <-> JSON. Strict: an unknown field or a wrong
+// type names the field, so a typo in a ruleset file shows up when it loads rather than as a feat
+// that quietly does nothing.
 
 #include "yorehold/framework/rpg/CharacterOptions.h"
 
@@ -73,6 +74,12 @@ std::vector<std::string> ids(const json& j, const std::string& path, const char*
     return v.get<std::vector<std::string>>();
 }
 
+std::set<std::string> idSet(const json& j, const std::string& path, const char* key)
+{
+    const std::vector<std::string> list = ids(j, path, key);
+    return {list.begin(), list.end()};
+}
+
 std::map<std::string, int> scores(const json& j, const std::string& path, int lowest, int highest)
 {
     std::map<std::string, int> result;
@@ -88,10 +95,79 @@ std::map<std::string, int> scores(const json& j, const std::string& path, int lo
     return result;
 }
 
-std::set<std::string> idSet(const json& j, const char* key)
+std::map<std::string, std::string> rankMap(const json& j, const std::string& path)
 {
-    const std::vector<std::string> list = ids(j, "", key);
-    return {list.begin(), list.end()};
+    std::map<std::string, std::string> ranks;
+    if (!j.contains("ranks"))
+        return ranks;
+    if (!j.at("ranks").is_object()) fail(path + "ranks", "maps a skill, ability, \"weapons\", \"armor\" or \"dc\" to a rank");
+    for (const auto& [target, rank] : j.at("ranks").items())
+    {
+        if (!isId(json(target)) || !isId(rank)) fail(path + "ranks." + target, "is a rank id");
+        ranks[target] = rank.get<std::string>();
+    }
+    return ranks;
+}
+
+// The "modifiers", "proficiencies", "ranks" and "resources" a feat or class feature gives.
+Grants grants(const json& j, const std::string& path)
+{
+    Grants g;
+    if (j.contains("modifiers"))
+    {
+        if (!j.at("modifiers").is_array() || j.at("modifiers").size() > 100) fail(path + "modifiers", "is a list");
+        for (size_t i = 0; i < j.at("modifiers").size(); i++)
+        {
+            const json& m = j.at("modifiers").at(i);
+            const std::string at = path + "modifiers[" + std::to_string(i) + "].";
+            if (!m.is_object()) fail(at.substr(0, at.size() - 1), "is an object with a stat and a value");
+            onlyFields(m, at, {"stat", "op", "value"});
+            Modifier modifier;
+            // Stats are camelCase ("maxHp"), so not held to the id rules.
+            if (!m.contains("stat") || !m.at("stat").is_string() || m.at("stat").get<std::string>().empty()
+                || m.at("stat").get<std::string>().size() > 64)
+                fail(at + "stat", "is a stat name");
+            modifier.stat = m.at("stat").get<std::string>();
+            const std::string op = m.contains("op") && m.at("op").is_string() ? m.at("op").get<std::string>() : "add";
+            if (op == "multiply") modifier.op = Modifier::Op::Multiply;
+            else if (op == "override") modifier.op = Modifier::Op::Override;
+            else if (op != "add" || (m.contains("op") && !m.at("op").is_string())) fail(at + "op", "is \"add\", \"multiply\" or \"override\"");
+            if (!m.contains("value") || !m.at("value").is_number() || !std::isfinite(m.at("value").get<double>()))
+                fail(at + "value", "is a number");
+            modifier.value = m.at("value").get<float>();
+            g.modifiers.push_back(std::move(modifier));
+        }
+    }
+    g.proficiencies = idSet(j, path, "proficiencies");
+    g.ranks = rankMap(j, path);
+    if (j.contains("resources"))
+    {
+        if (!j.at("resources").is_object()) fail(path + "resources", "maps a resource to the maximum it adds");
+        for (const auto& [resource, amount] : j.at("resources").items())
+        {
+            if (!isId(json(resource)) || !amount.is_number_integer() || amount.get<long long>() < 1 || amount.get<long long>() > 1000)
+                fail(path + "resources." + resource, "is a whole number from 1 to 1000");
+            g.resources[resource] = {amount.get<int>(), amount.get<int>()};
+        }
+    }
+    return g;
+}
+
+json grantsJson(const Grants& g)
+{
+    json j = json::object();
+    if (!g.modifiers.empty())
+    {
+        json modifiers = json::array();
+        for (const Modifier& m : g.modifiers)
+            modifiers.push_back({{"stat", m.stat}, {"op", m.op == Modifier::Op::Multiply ? "multiply" : m.op == Modifier::Op::Override ? "override" : "add"},
+                {"value", m.value}});
+        j["modifiers"] = modifiers;
+    }
+    if (!g.proficiencies.empty()) j["proficiencies"] = g.proficiencies;
+    if (!g.ranks.empty()) j["ranks"] = g.ranks;
+    for (const auto& [resource, amount] : g.resources) j["resources"][resource] = amount.max;
+    return j;
 }
 
 template <typename T, typename Parse>
@@ -125,7 +201,7 @@ std::optional<RaceDefinition> raceFromJson(std::string_view source, std::string*
         r.darkvision = number(j, "", "darkvision", 0, 0, 10000);
         r.bonusHp = number(j, "", "bonusHp", 0, 0, 1000);
         r.abilities = scores(j, "", -10, 10);
-        r.proficiencies = idSet(j, "proficiencies");
+        r.proficiencies = idSet(j, "", "proficiencies");
         r.feats = ids(j, "", "feats");
         return r;
     });
@@ -140,7 +216,7 @@ std::optional<BackgroundDefinition> backgroundFromJson(std::string_view source, 
         b.name = j.contains("name") ? text(j, "name", 64) : b.id;
         b.description = text(j, "description", 4000);
         b.abilities = scores(j, "", -10, 10);
-        b.proficiencies = idSet(j, "proficiencies");
+        b.proficiencies = idSet(j, "", "proficiencies");
         b.feats = ids(j, "", "feats");
         b.items = ids(j, "", "items");
         return b;
@@ -166,7 +242,6 @@ std::optional<FeatDefinition> featFromJson(std::string_view source, std::string*
             if (!j.at("repeatable").is_boolean()) fail("repeatable", "is true or false");
             f.repeatable = j.at("repeatable").get<bool>();
         }
-
         if (j.contains("requires"))
         {
             const json& r = j.at("requires");
@@ -178,54 +253,104 @@ std::optional<FeatDefinition> featFromJson(std::string_view source, std::string*
             f.needs.abilities = scores(r, "requires.", 1, 30);
             f.needs.proficiencies = ids(r, "requires.", "proficiencies");
         }
-
-        if (j.contains("modifiers"))
-        {
-            if (!j.at("modifiers").is_array() || j.at("modifiers").size() > 100) fail("modifiers", "is a list");
-            for (size_t i = 0; i < j.at("modifiers").size(); i++)
-            {
-                const json& m = j.at("modifiers").at(i);
-                const std::string path = "modifiers[" + std::to_string(i) + "].";
-                if (!m.is_object()) fail(path.substr(0, path.size() - 1), "is an object with a stat and a value");
-                onlyFields(m, path, {"stat", "op", "value"});
-                Modifier modifier;
-                // Stats are camelCase ("maxHp"), so not held to the id rules.
-                if (!m.contains("stat") || !m.at("stat").is_string() || m.at("stat").get<std::string>().empty()
-                    || m.at("stat").get<std::string>().size() > 64)
-                    fail(path + "stat", "is a stat name");
-                modifier.stat = m.at("stat").get<std::string>();
-                const std::string op = m.contains("op") && m.at("op").is_string() ? m.at("op").get<std::string>() : "add";
-                if (op == "multiply") modifier.op = Modifier::Op::Multiply;
-                else if (op == "override") modifier.op = Modifier::Op::Override;
-                else if (op != "add" || (m.contains("op") && !m.at("op").is_string())) fail(path + "op", "is \"add\", \"multiply\" or \"override\"");
-                if (!m.contains("value") || !m.at("value").is_number() || !std::isfinite(m.at("value").get<double>()))
-                    fail(path + "value", "is a number");
-                modifier.value = m.at("value").get<float>();
-                f.modifiers.push_back(std::move(modifier));
-            }
-        }
-        f.proficiencies = idSet(j, "proficiencies");
-        if (j.contains("ranks"))
-        {
-            if (!j.at("ranks").is_object()) fail("ranks", "maps a skill, ability, \"weapons\", \"armor\" or \"dc\" to a rank");
-            for (const auto& [target, rank] : j.at("ranks").items())
-            {
-                if (!isId(json(target)) || !isId(rank)) fail("ranks." + target, "is a rank id");
-                f.ranks[target] = rank.get<std::string>();
-            }
-        }
-        if (j.contains("resources"))
-        {
-            if (!j.at("resources").is_object()) fail("resources", "maps a resource to the maximum it adds");
-            for (const auto& [resource, amount] : j.at("resources").items())
-            {
-                if (!isId(json(resource)) || !amount.is_number_integer() || amount.get<long long>() < 1 || amount.get<long long>() > 1000)
-                    fail("resources." + resource, "is a whole number from 1 to 1000");
-                f.resources[resource] = {amount.get<int>(), amount.get<int>()};
-            }
-        }
+        f.gives = grants(j, "");
         return f;
     });
+}
+
+std::optional<std::vector<ClassLevel>> classLevelsFromJson(std::string_view source, std::string* error)
+{
+    if (error) error->clear();
+    try
+    {
+        const json rows = json::parse(source);
+        if (!rows.is_array() || rows.size() > 1000) fail("levels", "is a list with one entry per class level");
+        std::vector<ClassLevel> levels;
+        for (size_t i = 0; i < rows.size(); i++)
+        {
+            const json& row = rows.at(i);
+            const std::string path = "levels[" + std::to_string(i) + "].";
+            if (!row.is_object()) fail(path.substr(0, path.size() - 1), "is an object");
+            onlyFields(row, path, {"features", "ranks", "feats", "skills", "slots"});
+            ClassLevel level;
+            if (row.contains("features"))
+            {
+                if (!row.at("features").is_array() || row.at("features").size() > 100) fail(path + "features", "is a list");
+                for (size_t k = 0; k < row.at("features").size(); k++)
+                {
+                    const json& f = row.at("features").at(k);
+                    const std::string at = path + "features[" + std::to_string(k) + "].";
+                    if (!f.is_object()) fail(at.substr(0, at.size() - 1), "is an object with an id");
+                    onlyFields(f, at, {"id", "name", "description", "modifiers", "proficiencies", "ranks", "resources"});
+                    ClassFeature feature;
+                    if (!f.contains("id") || !isId(f.at("id"))) fail(at + "id", "uses a-z, 0-9, - and _");
+                    feature.id = f.at("id").get<std::string>();
+                    feature.name = f.contains("name") ? text(f, "name", 64) : feature.id;
+                    feature.description = text(f, "description", 4000);
+                    feature.gives = grants(f, at);
+                    level.features.push_back(std::move(feature));
+                }
+            }
+            level.ranks = rankMap(row, path);
+            level.feats = ids(row, path, "feats");
+            for (const std::string& kind : level.feats)
+                if (std::none_of(std::begin(FeatDefinition::kinds), std::end(FeatDefinition::kinds), [&](const char* k) { return kind == k; }))
+                    fail(path + "feats", "lists feat kinds: \"class\", \"skill\", \"general\" or \"race\"");
+            level.skills = number(row, path, "skills", 0, 0, 100);
+            if (row.contains("slots"))
+            {
+                if (!row.at("slots").is_object()) fail(path + "slots", "maps a slot level to a number of slots");
+                for (const auto& [slotLevel, count] : row.at("slots").items())
+                {
+                    const bool digits = !slotLevel.empty() && slotLevel.size() <= 2
+                        && std::all_of(slotLevel.begin(), slotLevel.end(), [](char c) { return c >= '0' && c <= '9'; });
+                    if (!digits || std::stoi(slotLevel) < 1 || !count.is_number_integer() || count.get<long long>() < 0 || count.get<long long>() > 100)
+                        fail(path + "slots." + slotLevel, "is a slot level from 1 with 0 to 100 slots");
+                    level.slots[std::stoi(slotLevel)] = count.get<int>();
+                }
+            }
+            levels.push_back(std::move(level));
+        }
+        return levels;
+    }
+    catch (const std::exception& e)
+    {
+        if (error) *error = e.what();
+        return std::nullopt;
+    }
+}
+
+std::string classLevelsToJson(const std::vector<ClassLevel>& levels)
+{
+    json rows = json::array();
+    for (const ClassLevel& level : levels)
+    {
+        json row = json::object();
+        if (!level.features.empty())
+        {
+            json features = json::array();
+            for (const ClassFeature& f : level.features)
+            {
+                json entry = grantsJson(f.gives);
+                entry["id"] = f.id;
+                entry["name"] = f.name;
+                if (!f.description.empty()) entry["description"] = f.description;
+                features.push_back(std::move(entry));
+            }
+            row["features"] = features;
+        }
+        if (!level.ranks.empty()) row["ranks"] = level.ranks;
+        if (!level.feats.empty()) row["feats"] = level.feats;
+        if (level.skills) row["skills"] = level.skills;
+        if (!level.slots.empty())
+        {
+            json slots = json::object();
+            for (const auto& [slotLevel, count] : level.slots) slots[std::to_string(slotLevel)] = count;
+            row["slots"] = slots;
+        }
+        rows.push_back(std::move(row));
+    }
+    return rows.dump();
 }
 
 }

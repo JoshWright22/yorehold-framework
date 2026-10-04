@@ -245,6 +245,37 @@ in order, and works out HP last so CON changes count. A picked feat that doesn't
 already (unless `repeatable`), or whose requirements weren't met at that level fails with the level
 named: `levels[1].picks.feats: "tough" needs level 2`.
 
+### Class level tables
+
+A class file may carry `levels`: row n-1 is what reaching level n *in that class* brings. Rows are
+strict like the option files (`levels[4].slots.3: ...`).
+
+```json
+"levels": [
+  { "slots": { "1": 2 }, "skills": 1,
+    "features": [ { "id": "spellbook", "name": "Spellbook", "description": "...",
+                    "modifiers": [], "proficiencies": [], "ranks": {}, "resources": { "recovery": 1 } } ] },
+  { "feats": ["class"], "slots": { "1": 3 } },
+  { "feats": ["general", "skill"], "ranks": { "dc": "expert" }, "slots": { "1": 4, "2": 2 } }
+]
+```
+
+| Field | Meaning |
+|---|---|
+| `features` | Given at that level; each does what a feat does (modifiers with source `build:feature:<class>:<id>`, skills, ranks, resources). |
+| `ranks` | Raised to at least this rank. |
+| `feats` | The kinds of feat the player may pick at this level, one pick each. |
+| `skills` | How many skills the player may pick to train. |
+| `slots` | Spell slots by slot level, as totals; a row without them keeps the previous row's. They become the resources `slots-1`, `slots-2`... |
+
+`build` walks the character's levels in order; each one takes the next row of its own class, so
+any level can go into any class. With several casting classes each slot level gets the most any one
+of them gives. For a class with a table, a level's `skills` and `feats` picks must fit its row
+(`levels[1].picks.feats: "sturdy" is a general feat, and this level has no general feat to choose`);
+picks left out are fine and stay open. A class without `levels` (older files) adds HP only and
+doesn't limit picks. The top of the class file is still what a first-level character starts with,
+and only the first class's is used.
+
 ### Effects
 
 An `Effect` is what a spell, an action, an item, a trap or a feature does: a list of steps, read from JSON and run by the framework. `Effect::fromJson` takes either the list itself or an object with `effects` and an optional `save`:

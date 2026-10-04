@@ -177,7 +177,7 @@ void options()
     const auto tough = yh::featFromJson(R"({"id":"tough","kind":"general","modifiers":[{"stat":"maxHp","value":3}],
         "resources":{"grit":1},"requires":{"level":2,"abilities":{"con":12}}})", &error);
     CHECK(tough && tough->kind == "general" && tough->needs.level == 2 && tough->needs.abilities.at("con") == 12
-        && tough->modifiers.size() == 1 && tough->resources.at("grit").max == 1);
+        && tough->gives.modifiers.size() == 1 && tough->gives.resources.at("grit").max == 1);
 
     // A ruleset folder of options; references are checked once everything is read.
     const fs::path root = fs::temp_directory_path() / "yorehold-options-test";
@@ -252,6 +252,71 @@ void options()
     CHECK(live.maxHp() == 13 + 1 && live.hasCondition("blessed"));
 }
 
+void levelTables()
+{
+    std::string error;
+    // Strict rows, named by index.
+    CHECK(!yh::classLevelsFromJson(R"([{}, {"feat":["class"]}])", &error) && error == "levels[1].feat: unknown field");
+    CHECK(!yh::classLevelsFromJson(R"([{"feats":["epic"]}])", &error) && error.find("levels[0].feats") == 0);
+    CHECK(!yh::classLevelsFromJson(R"([{"slots":{"0":2}}])", &error) && error.find("levels[0].slots.0") == 0);
+    CHECK(!yh::classLevelsFromJson(R"([{"features":[{"id":"x","modifier":[]}]}])", &error) && error == "levels[0].features[0].modifier: unknown field");
+    CHECK(!yh::Compendium::classFromJson(R"({"id":"x","levels":{}})", &error) && error.find("levels") == 0);
+
+    auto compendium = classes();
+    const auto mage = yh::Compendium::classFromJson(R"({"id":"mage","name":"Mage","hitDie":6,"proficiencyRanks":{"dc":"trained"},"levels":[
+        {"features":[{"id":"spellbook","name":"Spellbook","resources":{"recovery":1}}], "slots":{"1":2}, "skills":1},
+        {"feats":["class"], "slots":{"1":3}},
+        {"ranks":{"dc":"expert"}, "slots":{"1":4,"2":2}, "feats":["general","skill"],
+         "features":[{"id":"focus","modifiers":[{"stat":"dc","value":1}]}]}]})", &error);
+    CHECK(mage && error.empty() && mage->levels.size() == 3 && mage->levels[2].slots.at(2) == 2);
+    if (!mage) return;
+    // The table survives a round trip.
+    const auto again = yh::Compendium::classFromJson(yh::Compendium::classToJson(*mage), &error);
+    CHECK(again && yh::Compendium::classToJson(*again) == yh::Compendium::classToJson(*mage));
+    compendium.classes["mage"] = *mage;
+    compendium.feats["arcane-eye"] = *yh::featFromJson(R"({"id":"arcane-eye","kind":"class","requires":{"classes":["mage"]}})");
+    compendium.feats["sturdy"] = *yh::featFromJson(R"({"id":"sturdy","kind":"general","modifiers":[{"stat":"maxHp","value":2}]})");
+    compendium.feats["lore"] = *yh::featFromJson(R"({"id":"lore","kind":"skill"})");
+
+    const auto rules = yh::Ruleset::modern();
+    auto choices = ana(rules);
+    choices.levels = {{"mage", {{"skills", {"arcana"}}}}};
+    const auto first = compendium.build(rules, choices, &error);
+    CHECK(first && error.empty() && first->resources.at("slots-1").max == 2 && first->resources.at("recovery").max == 1
+        && first->proficiencies.contains("arcana"));
+
+    // Each row in turn: slots replace the last row's, ranks rise, features stay.
+    choices.levels.push_back({"mage", {{"feats", {"arcane-eye"}}}});
+    choices.levels.push_back({"mage", {{"feats", {"sturdy", "lore"}}}});
+    const auto third = compendium.build(rules, choices, &error);
+    CHECK(third && error.empty() && third->resources.at("slots-1").max == 4 && third->resources.at("slots-2").max == 2);
+    CHECK(third && third->proficiencyRank(rules, "dc") == "expert" && third->stats.integer("dc") == 1 && third->resources.at("recovery").max == 1);
+    CHECK(third && third->maxHp() == (6 + 2) + 2 * (4 + 2) + 2);
+
+    // Picks must fit what the row offers.
+    auto extraSkill = choices; extraSkill.levels[0].picks["skills"] = {"arcana", "stealth"};
+    CHECK(!compendium.build(rules, extraSkill, &error) && error == "levels[0].picks.skills: 2 picked, this level offers 1");
+    auto wrongKind = choices; wrongKind.levels[1].picks["feats"] = {"sturdy"};
+    CHECK(!compendium.build(rules, wrongKind, &error)
+        && error == "levels[1].picks.feats: \"sturdy\" is a general feat, and this level has no general feat to choose");
+    auto tooMany = choices; tooMany.levels[2].picks["feats"] = {"sturdy", "lore", "arcane-eye"};
+    CHECK(!compendium.build(rules, tooMany, &error) && error.find("levels[2].picks.feats: \"arcane-eye\" is a class feat") == 0);
+    auto open = choices; open.levels[2].picks.clear();
+    CHECK(compendium.build(rules, open, &error) && error.empty()); // a choice left open builds; it's asked for later
+
+    // Any level into any class: the class's own level picks its row, and slots don't stack.
+    auto multi = choices;
+    multi.levels.insert(multi.levels.begin() + 1, yh::LevelChoice{"soldier", {}});
+    const auto mixed = compendium.build(rules, multi, &error);
+    CHECK(mixed && error.empty() && mixed->level == 4 && mixed->characterClass == "Mage / Soldier");
+    CHECK(mixed && mixed->resources.at("slots-1").max == 4 && mixed->maxHp() == 22 + 8);
+    auto twoCasters = choices;
+    compendium.classes["mage2"] = *mage; compendium.classes["mage2"].id = "mage2";
+    twoCasters.levels.push_back({"mage2", {}});
+    const auto both = compendium.build(rules, twoCasters, &error);
+    CHECK(both && both->resources.at("slots-1").max == 4 && both->resources.at("recovery").max == 2);
+}
+
 }
 
 void characterChoices()
@@ -260,6 +325,7 @@ void characterChoices()
     building();
     liveState();
     options();
+    levelTables();
 }
 
 }
