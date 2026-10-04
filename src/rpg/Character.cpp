@@ -389,6 +389,42 @@ float Character::carryCapacity(const Ruleset& rules) const
     return static_cast<float>(abilityScore(strength) * rules.carryPerStrength);
 }
 
+int Character::encumbrance(const Ruleset& rules) const
+{
+    const float capacity = carryCapacity(rules);
+    if (capacity <= 0)
+        return 0;
+    const float share = carriedWeight() / capacity;
+    if (rules.immobileAt > 0 && share > rules.immobileAt)
+        return 2;
+    return rules.encumberedAt > 0 && share > rules.encumberedAt ? 1 : 0;
+}
+
+int Character::speedSquares(const Ruleset& rules) const
+{
+    const int squares = speedFeet() / std::max(1, rules.feetPerSquare);
+    switch (encumbrance(rules))
+    {
+    case 2: return 0;
+    case 1: return squares > 0 ? std::max(1, static_cast<int>(static_cast<float>(squares) * rules.encumberedSpeed)) : 0;
+    default: return squares;
+    }
+}
+
+int Character::magicItems() const
+{
+    int count = 0;
+    for (const Item& item : inventory)
+        if (item.magic)
+            count += std::max(1, item.quantity);
+    return count;
+}
+
+bool Character::roomForMagic(const Ruleset& rules, int more) const
+{
+    return rules.magicItemLimit <= 0 || magicItems() + more <= rules.magicItemLimit;
+}
+
 void Character::addXp(const Ruleset& rules, int amount)
 {
     xp += amount;

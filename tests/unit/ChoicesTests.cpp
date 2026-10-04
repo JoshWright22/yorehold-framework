@@ -369,6 +369,49 @@ void loot()
     CHECK(yh::Character::fromJson(rich.toJson())->coins == 125);
 }
 
+void weightAndMagic()
+{
+    auto rules = yh::Ruleset::modern();
+    yh::Character c;
+    c.stats.setBase("str", 10); // carries 150 lb
+    c.stats.setBase("speed", 30);
+    yh::Item crate;
+    crate.id = "crate"; crate.name = "Crate"; crate.weight = 100;
+    c.inventory = {crate};
+    CHECK(c.encumbrance(rules) == 0 && c.speedSquares(rules) == 6);
+    c.inventory.push_back(crate); // 200 lb: over capacity
+    CHECK(c.encumbrance(rules) == 1 && c.speedSquares(rules) == 3);
+    c.inventory.back().quantity = 3; // 400 lb: over double
+    CHECK(c.encumbrance(rules) == 2 && c.speedSquares(rules) == 0);
+    rules.immobileAt = 0;
+    CHECK(c.encumbrance(rules) == 1);
+    rules.encumberedAt = 0;
+    CHECK(c.encumbrance(rules) == 0 && c.speedSquares(rules) == 6);
+    rules = yh::Ruleset::modern();
+    rules.carryPerStrength = 0;
+    CHECK(c.encumbrance(rules) == 0);
+    rules.encumberedAt = 0.5f; rules.immobileAt = 1.5f; rules.encumberedSpeed = 0.25f;
+    const auto back = yh::Ruleset::fromJson(rules.toJson());
+    CHECK(back && back->encumberedAt == 0.5f && back->immobileAt == 1.5f && back->encumberedSpeed == 0.25f);
+    auto j = nlohmann::json::parse(rules.toJson());
+    j["encumberedSpeed"] = 2;
+    CHECK(!yh::Ruleset::fromJson(j.dump()));
+
+    // The magic item limit counts everything carried, worn or not.
+    yh::Item ring;
+    ring.id = "ring"; ring.name = "Ring"; ring.magic = true;
+    c.inventory = {ring, ring};
+    c.inventory[1].quantity = 2;
+    CHECK(c.magicItems() == 3 && c.roomForMagic(rules, 5)); // no limit in this ruleset
+    rules.magicItemLimit = 3;
+    CHECK(!c.roomForMagic(rules));
+    c.inventory.pop_back();
+    CHECK(c.roomForMagic(rules, 2) && !c.roomForMagic(rules, 3));
+    CHECK(yh::Character::fromJson(c.toJson())->inventory[0].magic);
+    const auto item = yh::Compendium::itemFromJson(R"({"id":"ring","magic":true})");
+    CHECK(item && item->magic && yh::Compendium::itemFromJson(yh::Compendium::itemToJson(*item))->magic);
+}
+
 void scoreMethods()
 {
     auto rules = yh::Ruleset::modern();
@@ -417,6 +460,7 @@ void characterChoices()
     scoreMethods();
     hands();
     loot();
+    weightAndMagic();
     building();
     liveState();
     options();

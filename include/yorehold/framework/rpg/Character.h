@@ -24,6 +24,7 @@ struct Item
     float weight = 0;   // pounds
     int value = 0;      // copper
     int quantity = 1;
+    bool magic = false; // counts toward the ruleset's magic item limit
     bool equipped = false;
     std::vector<Modifier> modifiers; // apply while equipped
 };
@@ -81,7 +82,8 @@ public:
     int maxHp() const { return stats.integer("maxHp"); }
     int armorClass(const Ruleset& rules) const;
     int speedFeet() const { return stats.integer("speed"); }
-    int speedSquares(const Ruleset& rules) const { return speedFeet() / std::max(1, rules.feetPerSquare); }
+    // Squares moved in a turn: the speed, less for someone carrying too much (see encumbrance).
+    int speedSquares(const Ruleset& rules) const;
 
     // Ability or skill check: d20 + modifier (+ proficiency if proficient).
     int checkModifier(const Ruleset& rules, std::string_view abilityOrSkill) const;
@@ -148,6 +150,12 @@ public:
 
     float carriedWeight() const;
     float carryCapacity(const Ruleset& rules) const;
+    // How weighed down: 0 = free, 1 = slowed, 2 = can't move (the ruleset's shares of capacity).
+    int encumbrance(const Ruleset& rules) const;
+    // Magic items carried, worn or not, counting each of a stack; and whether `more` of them
+    // still fit under the ruleset's limit (always, where it has none).
+    int magicItems() const;
+    bool roomForMagic(const Ruleset& rules, int more = 1) const;
 
     void addXp(const Ruleset& rules, int amount); // levels up automatically
 

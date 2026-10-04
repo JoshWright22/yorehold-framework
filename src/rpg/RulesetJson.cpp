@@ -55,6 +55,7 @@ std::string Ruleset::toJson() const
         {"proficiencyByLevel", proficiencyByLevel}, {"xpForLevel", xpForLevel},
         {"actionsPerTurn", actionsPerTurn}, {"bonusActions", bonusActions}, {"strikeCostsHands", strikeCostsHands}, {"sharedTurns", sharedTurns},
         {"feetPerSquare", feetPerSquare}, {"carryPerStrength", carryPerStrength},
+        {"encumberedAt", encumberedAt}, {"immobileAt", immobileAt}, {"encumberedSpeed", encumberedSpeed},
         {"magicItemLimit", magicItemLimit}, {"passiveBase", passiveBase}};
     j["scoreMethods"] = {{"roll", scoreMethods.roll}, {"standardArray", scoreMethods.standardArray}, {"pointBudget", scoreMethods.pointBudget},
         {"pointCosts", J::object()}};
@@ -109,6 +110,12 @@ std::optional<Ruleset> Ruleset::fromJson(std::string_view json, std::string* err
         if (r.actionsPerTurn < 1 || r.actionsPerTurn > 10) throw std::invalid_argument("actionsPerTurn is 1 to 10");
         r.feetPerSquare = j.value("feetPerSquare", r.feetPerSquare);
         r.carryPerStrength = j.value("carryPerStrength", r.carryPerStrength);
+        r.encumberedAt = j.value("encumberedAt", r.encumberedAt);
+        r.immobileAt = j.value("immobileAt", r.immobileAt);
+        r.encumberedSpeed = j.value("encumberedSpeed", r.encumberedSpeed);
+        if (!std::isfinite(r.encumberedAt) || r.encumberedAt < 0 || r.encumberedAt > 1000 || !std::isfinite(r.immobileAt) || r.immobileAt < 0
+            || r.immobileAt > 1000 || !std::isfinite(r.encumberedSpeed) || r.encumberedSpeed < 0 || r.encumberedSpeed > 1)
+            throw std::invalid_argument("Invalid encumbrance: shares of capacity from 0, and a speed from 0 to 1");
         r.magicItemLimit = j.value("magicItemLimit", r.magicItemLimit);
         r.passiveBase = j.value("passiveBase", r.passiveBase);
         if (r.magicItemLimit < 0 || r.magicItemLimit > 1000 || r.passiveBase < -1000 || r.passiveBase > 1000)

@@ -363,6 +363,8 @@ Every effect step also accepts `ifFlag`: it only runs for subjects carrying that
 
 `Character` includes inventory, coins, equipment, resources, conditions, HP/temp HP, checks and saves. `equip` keeps one item per slot and two hands between the held slots (those ending in `Hand`): taking up an item whose `hands` aren't free puts other held items away, last-listed first. `Encounter` handles initiative, turns, action/movement budgets, attacks, damage and condition durations. Empty encounters and negative movement requests are rejected. Which actions are legal, and the UI flow around them, remain client responsibilities.
 
+Weight: `carryCapacity(rules)` is the first ability's score times the ruleset's `carryPerStrength` (0 = weight doesn't matter). Carrying more than `encumberedAt` times that (default 1) cuts `speedSquares` to `encumberedSpeed` of it (default 0.5, at least one square); more than `immobileAt` times (default 2) leaves no movement. Either step is off at 0. `encumbrance(rules)` gives 0, 1 or 2. An item with `"magic": true` counts toward the ruleset's `magicItemLimit` wherever it is in the inventory; `magicItems()` counts them and `roomForMagic(rules, more)` says whether more fit. Enforcing the limit when items change hands is the game's.
+
 ### Loot tables
 
 A creature file's optional `loot` says what is found on it besides the items it carries; clients use the same table for containers:

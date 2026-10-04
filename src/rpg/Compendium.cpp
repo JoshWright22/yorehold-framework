@@ -56,6 +56,7 @@ Item itemFrom(const json& j)
     item.weight = j.value("weight", 0.0f);
     item.value = j.value("value", 0);
     item.quantity = j.value("quantity", 1);
+    item.magic = j.value("magic", false);
     for (const json& m : j.value("modifiers", json::array()))
     {
         Modifier mod{m.at("stat").get<std::string>(), opFromName(m.value("op", "add")), m.at("value").get<float>(), ""};
@@ -218,7 +219,7 @@ std::string Compendium::itemToJson(const Item& item)
         modifiers.push_back({{"stat", m.stat}, {"op", opName(m.op)}, {"value", m.value}});
     return json{{"id", item.id}, {"name", item.name}, {"slot", item.slot}, {"damage", item.damage},
         {"attackAbility", item.attackAbility}, {"hands", item.hands}, {"weight", item.weight}, {"value", item.value},
-        {"quantity", item.quantity}, {"modifiers", modifiers}}.dump(2);
+        {"quantity", item.quantity}, {"magic", item.magic}, {"modifiers", modifiers}}.dump(2);
 }
 
 std::string Compendium::classToJson(const ClassDefinition& c)

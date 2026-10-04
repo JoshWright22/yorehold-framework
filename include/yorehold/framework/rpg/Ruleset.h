@@ -168,7 +168,12 @@ struct Ruleset
     bool strikeCostsHands = false;  // a Strike costs one action per hand the weapon needs
     bool sharedTurns = false;      // consecutive allies may interleave their turns
     int feetPerSquare = 5;
-    int carryPerStrength = 15; // pounds per point of the first ability (strength)
+    int carryPerStrength = 15; // pounds per point of the first ability (strength); 0 = weight doesn't matter
+    // Carrying more than these shares of that capacity slows a character to `encumberedSpeed` of
+    // their speed, then stops them moving. 0 switches a step off.
+    float encumberedAt = 1;
+    float immobileAt = 2;
+    float encumberedSpeed = 0.5f;
     int magicItemLimit = 0;    // magic items one character may carry (0 = no limit)
     int passiveBase = 10;      // a passive score (what a check is rolled against) is this plus the modifier
 
