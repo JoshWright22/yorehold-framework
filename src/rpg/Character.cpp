@@ -466,6 +466,31 @@ int Character::restoreResources(const std::vector<std::string>& names)
     return restored;
 }
 
+bool Character::prepare(const std::vector<std::string>& ids, std::string* why)
+{
+    if (why) why->clear();
+    auto refuse = [&](std::string text) {
+        if (why) *why = std::move(text);
+        return false;
+    };
+    if (ids.empty())
+        return refuse("keep at least one spell prepared");
+    if (static_cast<int>(ids.size()) > prepareLimit)
+        return refuse("prepares at most " + std::to_string(prepareLimit) + (prepareLimit == 1 ? " spell" : " spells"));
+    for (size_t i = 0; i < ids.size(); i++)
+    {
+        if (std::find(preparable.begin(), preparable.end(), ids[i]) == preparable.end())
+            return refuse("can't prepare \"" + ids[i] + "\"");
+        if (std::find(ids.begin(), ids.begin() + static_cast<std::ptrdiff_t>(i), ids[i]) != ids.begin() + static_cast<std::ptrdiff_t>(i))
+            return refuse("\"" + ids[i] + "\" is listed twice");
+    }
+    // What it always knows never overlaps what it may prepare (see Compendium::build).
+    std::erase_if(spells, [&](const std::string& id) { return std::find(preparable.begin(), preparable.end(), id) != preparable.end(); });
+    spells.insert(spells.end(), ids.begin(), ids.end());
+    prepared = ids;
+    return true;
+}
+
 void Character::adoptBuild(const Character& built)
 {
     name = built.name;
