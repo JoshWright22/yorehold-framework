@@ -129,6 +129,16 @@ const RestDefinition* Ruleset::rest(std::string_view wanted) const
     return nullptr;
 }
 
+const SurfaceDefinition* Ruleset::surface(std::string_view wanted) const
+{
+    for (const SurfaceDefinition& s : surfaces)
+    {
+        if (s.id == wanted)
+            return &s;
+    }
+    return nullptr;
+}
+
 int Ruleset::hitDie(std::string_view characterClass) const
 {
     for (const auto& [className, sides] : hitDieByClass)

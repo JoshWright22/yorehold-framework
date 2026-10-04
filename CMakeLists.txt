@@ -153,6 +153,7 @@ add_library(yorehold-framework
     src/rpg/CharacterJson.cpp
     src/rpg/Combat.cpp
     src/rpg/Conditions.cpp
+    src/rpg/Surface.cpp
     src/rpg/Dice.cpp
     src/rpg/Compendium.cpp
     src/rpg/Dialogue.cpp

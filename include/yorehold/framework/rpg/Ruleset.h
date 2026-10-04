@@ -1,6 +1,7 @@
 #pragma once
 
 #include "yorehold/framework/rpg/Stats.h"
+#include "yorehold/framework/rpg/Surface.h"
 
 #include <map>
 #include <optional>
@@ -147,6 +148,7 @@ struct Ruleset
     std::vector<AbilityDefinition> abilities;
     std::vector<SkillDefinition> skills;
     std::vector<ConditionDefinition> conditions;
+    std::vector<SurfaceDefinition> surfaces;
     ModifierTable modifierTable = ModifierTable::D20;
     int scoreMin = 3;
     int scoreMax = 20;
@@ -195,6 +197,7 @@ struct Ruleset
     const AbilityDefinition* ability(std::string_view wanted) const;
     const SkillDefinition* skill(std::string_view wanted) const;
     const ConditionDefinition* condition(std::string_view wanted) const;
+    const SurfaceDefinition* surface(std::string_view wanted) const;
     const RestDefinition* rest(std::string_view wanted) const;
     int hitDie(std::string_view characterClass) const;
     bool checkDeathRules(std::string* error = nullptr) const;
@@ -203,6 +206,9 @@ struct Ruleset
     // Adds every `folder`/<id>.json as a condition, replacing any with the same id. The file name
     // is the id. All-or-nothing: on an error nothing changes and `error` names the file.
     bool loadConditions(const FileSystem& files, std::string_view folder, std::string* error = nullptr);
+    // Adds every `folder`/<id>.json as a surface, replacing any with the same id. The file name
+    // is the id. All-or-nothing: on an error nothing changes and `error` names the file.
+    bool loadSurfaces(const FileSystem& files, std::string_view folder, std::string* error = nullptr);
 
     // Built-in starting points. Both are written from scratch (game mechanics only, no copied text).
     static Ruleset classic(); // old-school: six abilities, classic modifier table, no skills or proficiency
