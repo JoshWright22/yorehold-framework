@@ -140,10 +140,8 @@ std::optional<CreatureDefinition> Compendium::creatureFromJson(std::string_view 
         }
         if (j.contains("ai"))
         {
-            std::string problem;
-            const std::optional<AiProfile> ai = AiProfile::fromJson(j.at("ai").dump(), &problem);
-            if (!ai) throw std::invalid_argument(problem);
-            c.ai = *ai;
+            if (!j.at("ai").is_string() && !j.at("ai").is_object()) throw std::invalid_argument("ai is a profile name or an object");
+            c.ai = j.at("ai").dump();
         }
         if (!validId(c.id)) throw std::invalid_argument("Creature ids use a-z, 0-9, - and _");
         if (c.hp < 1 || c.hp > 100000 || c.armorClass < 0 || c.armorClass > 100 || c.speed < 0 || c.speed > 1000
@@ -175,7 +173,7 @@ std::string Compendium::creatureToJson(const CreatureDefinition& c)
     return json{{"id", c.id}, {"name", c.name}, {"description", c.description}, {"hp", c.hp}, {"armorClass", c.armorClass},
         {"speed", c.speed}, {"darkvision", c.darkvision}, {"abilities", c.abilities}, {"proficiencies", c.proficiencies}, {"items", c.items},
         {"token", {{"color", {k.r, k.g, k.b, k.a}}, {"size", c.token.size}, {"image", c.token.image}}},
-        {"ai", json::parse(c.ai.toJson())}}.dump(2);
+        {"ai", json::parse(c.ai, nullptr, false)}}.dump(2);
 }
 
 bool Compendium::load(const FileSystem& files, std::string_view folder, std::string* error)
@@ -222,20 +220,93 @@ bool Compendium::load(const FileSystem& files, std::string_view folder, std::str
             if (!next.items.contains(id)) return "unknown item \"" + id + "\"";
         next.classes[c->id] = std::move(*c);
         return {};
-    }) && each("creatures", [&](const std::string& text, const std::string& stem) -> std::string {
+    });
+    if (!ok)
+        return false;
+
+    // AI profiles can build on each other in any order, so keep resolving until nothing is left
+    // (or nothing more can be: a base that doesn't exist, or two that name each other).
+    std::map<std::string, std::pair<std::string, std::string>> waiting; // id -> path, text
+    const bool read = each("ai", [&](const std::string& text, const std::string& stem) -> std::string {
+        const json j = json::parse(text, nullptr, false);
+        if (!j.is_object() || !j.contains("id") || !j.at("id").is_string()) return "AI profiles are objects with an id";
+        if (j.at("id") != stem) return "id doesn't match the file name";
+        if (!validId(stem)) return "AI ids use a-z, 0-9, - and _";
+        waiting[stem] = {base + "ai/" + stem + ".json", text};
+        return {};
+    });
+    if (!read)
+        return false;
+    const AiProfile blank = [] { AiProfile p; p.base = "custom"; return p; }();
+    while (!waiting.empty())
+    {
+        std::string failed, why;
+        size_t resolved = 0;
+        for (auto it = waiting.begin(); it != waiting.end();)
+        {
+            const std::string& id = it->first;
+            // A profile may not build on itself, or on one that is still waiting.
+            const AiProfile::Lookup known = [&](std::string_view name) -> const AiProfile* {
+                const auto found = next.ai.find(name);
+                return found == next.ai.end() || waiting.contains(std::string(name)) ? nullptr : &found->second;
+            };
+            std::string e;
+            std::optional<AiProfile> profile = AiProfile::fromJson(it->second.second, &e, known, &blank);
+            if (!profile)
+            {
+                failed = it->second.first;
+                why = e;
+                ++it;
+                continue;
+            }
+            profile->base = id;
+            next.ai[id] = std::move(*profile);
+            it = waiting.erase(it);
+            resolved++;
+        }
+        if (resolved == 0)
+        {
+            if (error) *error = failed + ": " + why;
+            return false;
+        }
+    }
+
+    const bool creaturesOk = each("creatures", [&](const std::string& text, const std::string& stem) -> std::string {
         std::string e;
         std::optional<CreatureDefinition> c = creatureFromJson(text, &e);
         if (!c) return e;
         if (c->id != stem) return "id \"" + c->id + "\" doesn't match the file name";
         for (const std::string& id : c->items)
             if (!next.items.contains(id)) return "unknown item \"" + id + "\"";
+        if (!AiProfile::fromJson(c->ai, &e, next.aiLookup())) return e;
         next.creatures[c->id] = std::move(*c);
         return {};
     });
-    if (!ok)
+    if (!creaturesOk)
         return false;
     *this = std::move(next);
     return true;
+}
+
+Compendium::Compendium()
+{
+    for (const char* name : {"mindless", "animal", "cunning", "tactical"})
+        ai[name] = *AiProfile::preset(name);
+}
+
+AiProfile::Lookup Compendium::aiLookup() const
+{
+    return [this](std::string_view name) -> const AiProfile* {
+        const auto found = ai.find(name);
+        return found == ai.end() ? nullptr : &found->second;
+    };
+}
+
+AiProfile Compendium::aiFor(const CreatureDefinition& creature) const
+{
+    if (const std::optional<AiProfile> profile = AiProfile::fromJson(creature.ai, nullptr, aiLookup()))
+        return *profile;
+    return *AiProfile::preset("cunning");
 }
 
 const Item* Compendium::item(std::string_view id) const

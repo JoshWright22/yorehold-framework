@@ -103,35 +103,48 @@ const AiProfile* AiProfile::preset(std::string_view name)
     return nullptr;
 }
 
-std::optional<AiProfile> AiProfile::fromJson(std::string_view text, std::string* error)
+std::optional<AiProfile> AiProfile::fromJson(std::string_view text, std::string* error, const Lookup& lookup, const AiProfile* current)
 {
     if (error) error->clear();
     try
     {
         const json j = json::parse(text);
-        const std::string base = j.is_string() ? j.get<std::string>() : j.is_object() ? j.value("base", std::string("cunning")) : std::string();
-        const AiProfile* start = preset(base);
-        if (!start) throw std::invalid_argument("Unknown AI \"" + base + "\" (mindless, animal, cunning or tactical)");
-        AiProfile p = *start;
-        if (j.is_object())
+        auto named = [&](const std::string& name) {
+            const AiProfile* found = lookup ? lookup(name) : preset(name);
+            if (!found) throw std::invalid_argument("Unknown AI \"" + name + "\"");
+            return *found;
+        };
+        AiProfile p;
+        if (j.is_string())
+            return named(j.get<std::string>());
+        if (!j.is_object()) throw std::invalid_argument("AI is a name or an object");
+        if (!j.contains("base"))
+            p = current ? *current : named("cunning");
+        else if (const std::string base = j.at("base").get<std::string>(); base == "none")
+            p.base = "custom";
+        else
         {
-            p.damage = j.value("damage", p.damage);
-            p.finish = j.value("finish", p.finish);
-            p.weak = j.value("weak", p.weak);
-            p.isolated = j.value("isolated", p.isolated);
-            p.pack = j.value("pack", p.pack);
-            p.nearby = j.value("nearby", p.nearby);
-            p.danger = j.value("danger", p.danger);
-            p.random = j.value("random", p.random);
-            p.fleeHp = j.value("fleeHp", p.fleeHp);
-            p.fleeLosses = j.value("fleeLosses", p.fleeLosses);
-            p.fleeLeaderless = j.value("fleeLeaderless", p.fleeLeaderless);
-            p.leader = j.value("leader", p.leader);
-            p.escapeAt = j.value("escapeAt", p.escapeAt);
+            p = named(base);
+            p.base = base;
         }
+        p.base = j.value("label", p.base);
+        p.damage = j.value("damage", p.damage);
+        p.finish = j.value("finish", p.finish);
+        p.weak = j.value("weak", p.weak);
+        p.isolated = j.value("isolated", p.isolated);
+        p.pack = j.value("pack", p.pack);
+        p.nearby = j.value("nearby", p.nearby);
+        p.danger = j.value("danger", p.danger);
+        p.random = j.value("random", p.random);
+        p.fleeHp = j.value("fleeHp", p.fleeHp);
+        p.fleeLosses = j.value("fleeLosses", p.fleeLosses);
+        p.fleeLeaderless = j.value("fleeLeaderless", p.fleeLeaderless);
+        p.leader = j.value("leader", p.leader);
+        p.escapeAt = j.value("escapeAt", p.escapeAt);
         for (const float value : {p.damage, p.finish, p.weak, p.isolated, p.pack, p.nearby, p.danger, p.random, p.fleeHp, p.fleeLosses, p.escapeAt})
             if (!std::isfinite(value) || value < 0 || value > 1000) throw std::invalid_argument("AI numbers are 0 to 1000");
         if (p.escapeAt < 1) throw std::invalid_argument("escapeAt is at least 1");
+        if (p.base.empty() || p.base.size() > 64) throw std::invalid_argument("AI labels are 1 to 64 characters");
         return p;
     }
     catch (const std::exception& e)
@@ -143,24 +156,9 @@ std::optional<AiProfile> AiProfile::fromJson(std::string_view text, std::string*
 
 std::string AiProfile::toJson() const
 {
-    const AiProfile* start = preset(base);
-    const AiProfile& reference = start ? *start : *preset("cunning");
-    json j{{"base", reference.base}};
-    auto put = [&](const char* name, float value, float usual) { if (value != usual) j[name] = value; };
-    put("damage", damage, reference.damage);
-    put("finish", finish, reference.finish);
-    put("weak", weak, reference.weak);
-    put("isolated", isolated, reference.isolated);
-    put("pack", pack, reference.pack);
-    put("nearby", nearby, reference.nearby);
-    put("danger", danger, reference.danger);
-    put("random", random, reference.random);
-    put("fleeHp", fleeHp, reference.fleeHp);
-    put("fleeLosses", fleeLosses, reference.fleeLosses);
-    put("escapeAt", escapeAt, reference.escapeAt);
-    if (fleeLeaderless != reference.fleeLeaderless) j["fleeLeaderless"] = fleeLeaderless;
-    if (leader != reference.leader) j["leader"] = leader;
-    return j.dump();
+    return json{{"base", "none"}, {"label", base}, {"damage", damage}, {"finish", finish}, {"weak", weak}, {"isolated", isolated},
+        {"pack", pack}, {"nearby", nearby}, {"danger", danger}, {"random", random}, {"fleeHp", fleeHp}, {"fleeLosses", fleeLosses},
+        {"fleeLeaderless", fleeLeaderless}, {"leader", leader}, {"escapeAt", escapeAt}}.dump();
 }
 
 bool wantsToFlee(const AiProfile& profile, const TacticalView& view)

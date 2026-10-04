@@ -562,14 +562,58 @@ void tactics()
     CHECK(byName && byName->base == "animal" && byName->fleeHp == yh::AiProfile::preset("animal")->fleeHp);
     const auto coward = yh::AiProfile::fromJson(R"({"base":"cunning","fleeHp":0.9,"leader":true})");
     CHECK(coward && coward->fleeHp == 0.9f && coward->leader && coward->pack == yh::AiProfile::preset("cunning")->pack);
-    CHECK(coward && coward->toJson() == R"({"base":"cunning","fleeHp":0.8999999761581421,"leader":true})");
     const auto again = coward ? yh::AiProfile::fromJson(coward->toJson()) : std::nullopt;
-    CHECK(again && again->fleeHp == coward->fleeHp && again->leader);
+    CHECK(again && again->fleeHp == coward->fleeHp && again->leader && again->pack == coward->pack && again->base == "cunning");
+    // An object with no base adjusts the AI that was already there; "none" starts from nothing.
+    const yh::AiProfile& wolfish = *yh::AiProfile::preset("animal");
+    const auto tweaked = yh::AiProfile::fromJson(R"({"fleeHp":1})", nullptr, {}, &wolfish);
+    CHECK(tweaked && tweaked->fleeHp == 1 && tweaked->pack == wolfish.pack && tweaked->base == "animal");
+    const auto bare = yh::AiProfile::fromJson(R"({"base":"none","label":"turret","damage":2})");
+    CHECK(bare && bare->base == "turret" && bare->damage == 2 && bare->pack == 0 && bare->fleeHp == 0);
+
+    const yh::Compendium builtIn;
     const auto creature = yh::Compendium::creatureFromJson(R"({"id":"wolf","ai":{"base":"animal","pack":3}})");
-    CHECK(creature && creature->ai.base == "animal" && creature->ai.pack == 3);
+    CHECK(creature && builtIn.aiFor(*creature).base == "animal" && builtIn.aiFor(*creature).pack == 3);
     const auto kept = creature ? yh::Compendium::creatureFromJson(yh::Compendium::creatureToJson(*creature)) : std::nullopt;
-    CHECK(kept && kept->ai.pack == 3 && kept->ai.fleeHp == creature->ai.fleeHp);
-    CHECK(!yh::Compendium::creatureFromJson(R"({"id":"wolf","ai":"clever"})"));
+    CHECK(kept && kept->ai == creature->ai);
+    CHECK(!yh::Compendium::creatureFromJson(R"({"id":"wolf","ai":5})"));
+    const auto plainCreature = yh::Compendium::creatureFromJson(R"({"id":"rat"})");
+    CHECK(plainCreature && builtIn.aiFor(*plainCreature).base == "cunning");
+
+    // Profiles as files: they can build on each other in any order, replace the built-in ones,
+    // and creatures name them. A base that doesn't exist (or a loop) fails the whole load.
+    {
+        namespace fs = std::filesystem;
+        const fs::path root = fs::temp_directory_path() / "yorehold-ai-test";
+        fs::remove_all(root);
+        auto write = [&](const char* file, const char* text) {
+            fs::create_directories((root / file).parent_path());
+            std::ofstream(root / file) << text;
+        };
+        write("good/ai/alpha.json", R"({"id":"alpha","base":"coward","leader":true})");
+        write("good/ai/coward.json", R"({"id":"coward","base":"cunning","fleeHp":1})");
+        write("good/ai/turret.json", R"({"id":"turret","damage":3})");
+        write("good/ai/mindless.json", R"({"id":"mindless","base":"none","nearby":9})");
+        write("good/creatures/pup.json", R"({"id":"pup","ai":"alpha"})");
+        write("good/creatures/runt.json", R"({"id":"runt","ai":{"base":"coward","random":2}})");
+        write("missing/ai/lost.json", R"({"id":"lost","base":"nowhere"})");
+        write("loop/ai/a.json", R"({"id":"a","base":"b"})");
+        write("loop/ai/b.json", R"({"id":"b","base":"a"})");
+        write("badcreature/creatures/imp.json", R"({"id":"imp","ai":"clever"})");
+        yh::FileSystem files;
+        files.mountFolder(root.string(), "ai");
+        yh::Compendium loaded;
+        std::string problem;
+        CHECK(loaded.load(files, "good", &problem));
+        CHECK(loaded.ai.contains("alpha") && loaded.ai["alpha"].fleeHp == 1 && loaded.ai["alpha"].leader && loaded.ai["alpha"].base == "alpha");
+        CHECK(loaded.ai["coward"].pack == yh::AiProfile::preset("cunning")->pack && loaded.ai["turret"].damage == 3 && loaded.ai["turret"].pack == 0);
+        CHECK(loaded.ai["mindless"].nearby == 9 && loaded.ai.contains("tactical"));
+        CHECK(loaded.creature("pup") && loaded.aiFor(*loaded.creature("pup")).leader && loaded.aiFor(*loaded.creature("runt")).random == 2);
+        yh::Compendium broken;
+        CHECK(!broken.load(files, "missing", &problem) && problem.find("nowhere") != std::string::npos && !broken.ai.contains("lost"));
+        CHECK(!broken.load(files, "loop", &problem) && !broken.load(files, "badcreature", &problem) && problem.find("clever") != std::string::npos);
+        fs::remove_all(root);
+    }
 
     const yh::AiProfile mindless = *yh::AiProfile::preset("mindless");
     const yh::AiProfile cunning = *yh::AiProfile::preset("cunning");

@@ -51,11 +51,14 @@ struct CreatureDefinition
     std::set<std::string> proficiencies;
     std::vector<std::string> items;
     TokenLook token;
-    AiProfile ai = *AiProfile::preset("cunning"); // how it fights when the game plays it
+    // How it fights when the game plays it, as written in the file (JSON: a profile's name or an
+    // object of changes, see AiProfile). Kept as text so it can be resolved again whenever the
+    // profiles change. Compendium::aiFor() turns it into numbers.
+    std::string ai = "\"cunning\"";
 };
 
-// Every class, item and creature a game knows about, loaded from one JSON file each:
-//   items/<id>.json, classes/<id>.json, creatures/<id>.json
+// Every class, item, creature and AI profile a game knows about, loaded from one JSON file each:
+//   items/<id>.json, classes/<id>.json, creatures/<id>.json, ai/<id>.json
 // Loading a second folder (a chapter's own content) adds to the set and replaces entries with
 // the same id, so chapters can tweak shared monsters without copying everything.
 class Compendium
@@ -64,8 +67,16 @@ public:
     std::map<std::string, Item> items;
     std::map<std::string, ClassDefinition> classes;
     std::map<std::string, CreatureDefinition> creatures;
+    // AI profiles by name: the built-in four, plus (or replaced by) every ai/<id>.json. A file is
+    // {"id": "coward", "base": "cunning", "fleeHp": 1}; without a base it starts from nothing.
+    std::map<std::string, AiProfile, std::less<>> ai;
 
-    // Reads every .json under `folder`/items, /classes and /creatures. All-or-nothing: on any
+    Compendium();
+    AiProfile::Lookup aiLookup() const; // valid while this compendium is alive and unchanged
+    // A creature's AI as numbers; the cunning preset if its text no longer resolves.
+    AiProfile aiFor(const CreatureDefinition& creature) const;
+
+    // Reads every .json under `folder`/items, /classes, /ai and /creatures. All-or-nothing: on any
     // error nothing is added and `error` names the file. Items are checked first, so classes and
     // creatures may only list items that exist (here or loaded before).
     bool load(const FileSystem& files, std::string_view folder, std::string* error = nullptr);

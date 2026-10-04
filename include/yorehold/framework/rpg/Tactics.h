@@ -3,6 +3,7 @@
 #include "yorehold/framework/map/Grid.h"
 #include "yorehold/framework/rpg/Random.h"
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -14,10 +15,13 @@ namespace yh
 
 // How a creature picks what to do on its turn. Every option it has is scored with these weights
 // and the best one wins, so a new kind of creature is a new set of numbers, not new code.
-// In a creature file: "ai": "cunning", or "ai": {"base": "cunning", "fleeHp": 0.5, ...}.
+//
+// Wherever an AI is written in data it is either a name ("cunning", or any profile the game has
+// loaded) or an object of changes: {"fleeHp": 0.5} adjusts whatever AI was there before,
+// {"base": "animal", "pack": 3} starts again from a named one, {"base": "none", ...} from nothing.
 struct AiProfile
 {
-    std::string base = "cunning"; // the preset the numbers started from
+    std::string base = "cunning"; // the profile the numbers started from (shown in debug notes)
 
     // Choosing who to hit and where to stand.
     float damage = 1;    // damage it expects to deal
@@ -38,9 +42,12 @@ struct AiProfile
 
     // Built in: "mindless", "animal", "cunning", "tactical". Null for anything else.
     static const AiProfile* preset(std::string_view name);
-    // A preset's name, or an object of overrides on top of its "base".
-    static std::optional<AiProfile> fromJson(std::string_view json, std::string* error = nullptr);
-    // Only what differs from the base preset.
+    // Finds a profile by name; games pass one that also knows the profiles in their data files.
+    using Lookup = std::function<const AiProfile*(std::string_view)>;
+    // `current` is the AI being adjusted when the object names no base (none: "cunning").
+    static std::optional<AiProfile> fromJson(std::string_view json, std::string* error = nullptr, const Lookup& lookup = {},
+        const AiProfile* current = nullptr);
+    // Every number, so it reads back the same whatever profiles are loaded.
     std::string toJson() const;
 };
 
