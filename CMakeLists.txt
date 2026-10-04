@@ -145,6 +145,7 @@ add_library(yorehold-framework
     src/rpg/Action.cpp
     src/rpg/Reaction.cpp
     src/rpg/Character.cpp
+    src/rpg/Merchant.cpp
     src/rpg/CharacterChoices.cpp
     src/rpg/CharacterOptions.cpp
     src/rpg/CharacterDeath.cpp

@@ -413,6 +413,22 @@ actions to finish before switching. With `sharedTurns: false`, turns remain sequ
 
 Fields: `id` (required, matching the file), `name` (defaults to id), `trigger` (required), either `action` or `readied: true`, `order` (default 0), and `promptSeconds` (0.1 to 30, default 2). A referenced action must not end the turn or ready another action. The host decides when to offer it and how to show a prompt. `Encounter::useReaction(index)` spends the creature's one reaction, regardless of the action's turn cost; down, withdrawn or `cantAct` creatures cannot react. The budget refreshes on its own turn.
 
+### Merchants
+
+`yh::Merchant` owns a finite `coins` purse and item inventory. Content JSON uses
+`stock: [{"item":"id","quantity":2,"value":500}]`, resolving ids through the caller's
+`ItemLookup`; `value` optionally overrides the item's unit value in the smallest currency.
+`buyMultiplier` defaults to 1 and `sellMultiplier` to 0.5, with
+`0 <= sellMultiplier <= buyMultiplier` and a positive buy multiplier. Buying rounds up;
+selling rounds down. A price of zero means no offer.
+
+`canBuy`/`canSell` give a refusal reason; `buy`/`sell` recheck and move exactly one unit.
+Stock and purse are finite; insufficient coins, equipped sales, currency overflow and the
+ruleset's magic limit refuse the trade without changes. Selling keeps the remaining equipped
+items' modifier sources correct. `toJson` saves full inventory entries so bought-back items
+retain their properties; `fromJson` reads either those entries or authored stock, validating
+quantities, prices and multipliers. The caller owns distance, turn and player permissions.
+
 ## Text and languages
 
 `Strings` loads `lang/<locale>.json` from the `FileSystem`, so skins and chapters can add or override languages. Nested objects become dotted keys (`menu.start`). `load(files, "pt-BR")` layers the fallback (`en`), then `pt`, then `pt-BR`. Missing keys fall back the same way and finally show the key itself; `missing()` lists them for translators. `get(key, {{"name", "Ana"}})` fills `{name}` placeholders, and `{{`/`}}` are literal braces. `plural(key, count)` picks `zero/one/two/few/many/other` with simplified CLDR integer rules: English-style by default, French/Portuguese treat 0 as one, plus Slavic few/many, Czech/Slovak, Arabic, and no plurals for CJK/Thai/Vietnamese/Indonesian. `preferredLocales()` reads the OS languages.

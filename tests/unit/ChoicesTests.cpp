@@ -3,11 +3,13 @@
 
 #include <yorehold/framework/rpg/CharacterChoices.h>
 #include <yorehold/framework/rpg/Compendium.h>
+#include <yorehold/framework/rpg/Merchant.h>
 #include <yorehold/framework/assets/FileSystem.h>
 #include <nlohmann/json.hpp>
 
 #include <filesystem>
 #include <fstream>
+#include <limits>
 
 namespace regression
 {
@@ -456,6 +458,53 @@ void scoreMethods()
 
 void characterChoices()
 {
+    auto compendium = classes();
+    std::string error;
+    auto shop = yh::Merchant::fromJson(R"({"coins":100,"buyMultiplier":1.25,"sellMultiplier":0.5,
+        "stock":[{"item":"sword","quantity":2,"value":11}]})", [&](std::string_view id) { return compendium.item(id); }, &error);
+    CHECK(shop && shop->buyPrice(shop->inventory[0]) == 14 && shop->sellPrice(shop->inventory[0]) == 5);
+    if (shop)
+    {
+        yh::Character buyer;
+        buyer.coins = 13;
+        const auto rules = yh::Ruleset::modern();
+        CHECK(!shop->buy(buyer, 0, rules) && buyer.inventory.empty() && shop->coins == 100);
+        buyer.coins = 30;
+        CHECK(shop->buy(buyer, 0, rules) && buyer.coins == 16 && shop->coins == 114 && shop->inventory[0].quantity == 1);
+        CHECK(shop->sell(buyer, 0) && buyer.coins == 21 && shop->coins == 109 && buyer.inventory.empty());
+        buyer.inventory.push_back(*compendium.item("sword"));
+        buyer.inventory.back().value = 11;
+        buyer.equip(0);
+        CHECK(!shop->sell(buyer, 0));
+        buyer.unequip(0);
+        shop->coins = 4;
+        CHECK(!shop->sell(buyer, 0) && buyer.inventory.size() == 1);
+        yh::Item armour;
+        armour.id = "armour"; armour.slot = "armor"; armour.modifiers = {{"ac", yh::Modifier::Op::Add, 2, ""}};
+        buyer.inventory.push_back(armour);
+        buyer.equip(1);
+        const int ac = buyer.armorClass(rules);
+        shop->coins = 100;
+        CHECK(shop->sell(buyer, 0) && buyer.inventory[0].equipped && buyer.armorClass(rules) == ac);
+        buyer.unequip(0);
+        CHECK(buyer.armorClass(rules) == ac - 2);
+        shop->coins = std::numeric_limits<int>::max();
+        const int before = buyer.coins;
+        CHECK(!shop->buy(buyer, 0, rules) && buyer.coins == before);
+        const auto saved = shop->toJson();
+        const auto back = yh::Merchant::fromJson(saved, {}, &error);
+        CHECK(back && back->toJson() == saved);
+    }
+    CHECK(!yh::Merchant::fromJson(R"({"sellMultiplier":2})", {}, &error));
+    CHECK(!yh::Merchant::fromJson(R"({"stock":[{"item":"missing"}]})", {}, &error));
+    CHECK(!yh::Merchant::fromJson(R"({"coins":-1})", {}, &error));
+    CHECK(!yh::Merchant::fromJson(R"({"coins":4294967396})", {}, &error));
+    CHECK(!yh::Merchant::fromJson(R"({"coins":18446744073709551615})", {}, &error));
+    CHECK(!yh::Merchant::fromJson(R"({"inventory":[{"id":"bad","quantity":4294967297}]})", {}, &error));
+    CHECK(!yh::Merchant::fromJson(R"({"inventory":[{"id":"bad","value":4294967396}]})", {}, &error));
+    CHECK(!yh::Merchant::fromJson(R"({"stock":[{"item":"sword","quantity":4294967297}]})",
+        [&](std::string_view id) { return compendium.item(id); }, &error));
+    CHECK(!yh::Merchant::fromJson(R"({"inventory":[{"id":"bad","quantity":0}]})", {}, &error));
     files();
     scoreMethods();
     hands();
