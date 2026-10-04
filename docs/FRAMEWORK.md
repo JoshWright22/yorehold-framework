@@ -195,6 +195,23 @@ Every effect step also accepts `ifFlag`: it only runs for subjects carrying that
 
 `Character` includes inventory, equipment, resources, conditions, HP/temp HP, checks and saves. `Encounter` handles initiative, turns, action/movement budgets, attacks, damage and condition durations. Empty encounters and negative movement requests are rejected. Which actions are legal, and the UI flow around them, remain client responsibilities.
 
+### Flanking and cover
+
+`map/Positioning.h` supplies `isFlanked(grid, target, foes, reach, blocked)` for opposite foes within
+reach, with an optional ray obstruction callback. `coverBetween(grid, from, target, blocked)` traces
+from the attacker's centre to inset target corners (four on squares/gridless maps, six on hexes).
+No blocked rays means `None`, any blocked ray means `Half`, at least three quarters means
+`ThreeQuarters`, and all means `Full`. These helpers contain no teams or combat bonuses; the caller
+supplies eligible foes and obstructions.
+
+`PositioningRules` reads an optional JSON object: `enabled` (true when present; the default instance
+is disabled), `flankingCondition` (empty by default), `flankingReach` (positive, at most 100, default
+1), `halfCoverArmorClass` and `threeQuartersCoverArmorClass` (0 to 100, default 0, the latter at least
+the former), `creaturesProvideCover` and `coverAgainstMelee` (default false). `check(rules)` verifies
+the condition reference after conditions are loaded. Unknown fields or invalid bounds fail clearly.
+`EffectHost::armorClass(actor, context)` and `hasFlag(actor, flag, context)` default to the sheet;
+override them to supply positional AC or condition flags without storing temporary geometry on it.
+
 ### Shared turns
 
 `Ruleset::sharedTurns` (JSON `sharedTurns`, default false) makes consecutive combatants on one team

@@ -128,6 +128,7 @@ add_library(yorehold-framework
     src/input/InputMapJson.cpp
     src/map/CameraControls.cpp
     src/map/Grid.cpp
+    src/map/Positioning.cpp
     src/map/FogOfWar.cpp
     src/map/LightLevels.cpp
     src/map/Objects.cpp
@@ -155,6 +156,7 @@ add_library(yorehold-framework
     src/rpg/QuestJournal.cpp
     src/rpg/Ruleset.cpp
     src/rpg/RulesetJson.cpp
+    src/rpg/PositioningRules.cpp
     src/rpg/Stats.cpp
     src/rpg/Stealth.cpp
     src/rpg/Tactics.cpp
@@ -213,6 +215,7 @@ if(YOREHOLD_FRAMEWORK_UNIT_TESTS AND NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQ
         tests/unit/ConditionTests.cpp
         tests/unit/EffectTests.cpp
         tests/unit/CombatTests.cpp
+        tests/unit/PositioningTests.cpp
         tests/unit/CameraControlTests.cpp
         tests/unit/CutsceneTests.cpp
     )

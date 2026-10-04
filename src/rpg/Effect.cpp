@@ -96,7 +96,7 @@ private:
         if (!step.ifFlag.empty())
         {
             const Character* subject = host_.sheet(who);
-            if (!subject || !subject->hasFlag(rules_, step.ifFlag))
+            if (!subject || !host_.hasFlag(who, step.ifFlag, context_))
                 return false;
         }
         Outcome& outcome = outcomes_[who];
@@ -386,7 +386,7 @@ private:
         // natural 20 hits and is a critical hit.
         const RollResult roll = rollD20(self->attackModifier(rules_), self->attackAdvantage(rules_), random_);
         const std::vector<std::string> afterAttack = self->conditionEvent(rules_, "attack"); // they still counted for this roll
-        const int ac = subject->armorClass(rules_);
+        const int ac = host_.armorClass(actor, context_);
         outcome.critical = roll.natural20();
         outcome.hit = !roll.natural1() && (outcome.critical || roll.total >= ac);
         EffectEvent event{EffectEvent::Kind::Attack, actor, context_.self, roll};
@@ -408,6 +408,18 @@ private:
     std::set<std::pair<EffectActor, std::string>> modified_; // modifiers this run has already started afresh
 };
 
+}
+
+int EffectHost::armorClass(EffectActor who, const EffectContext& context)
+{
+    const Character* subject = sheet(who);
+    return subject && context.rules ? subject->armorClass(*context.rules) : 0;
+}
+
+bool EffectHost::hasFlag(EffectActor who, std::string_view flag, const EffectContext& context)
+{
+    const Character* subject = sheet(who);
+    return subject && context.rules && subject->hasFlag(*context.rules, flag);
 }
 
 int EffectHost::damage(EffectActor who, int amount, std::string_view, const EffectContext&)

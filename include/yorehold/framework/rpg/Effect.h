@@ -122,6 +122,9 @@ public:
     virtual Character* sheet(EffectActor who) = 0;
     // Who "area", "allies" or "enemies" means for this effect.
     virtual std::vector<EffectActor> group(std::string_view which, const EffectContext& context) = 0;
+    // An attack's AC, including any positional rules the host supplies. Default: the target sheet's AC.
+    virtual int armorClass(EffectActor who, const EffectContext& context);
+    virtual bool hasFlag(EffectActor who, std::string_view flag, const EffectContext& context);
     // Takes `amount` of damage of `type` off someone and returns what was dealt. The default takes
     // it off the sheet as it is; a game with resistances overrides it.
     virtual int damage(EffectActor who, int amount, std::string_view type, const EffectContext& context);
