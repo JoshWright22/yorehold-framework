@@ -151,6 +151,7 @@ add_library(yorehold-framework
     src/rpg/Ruleset.cpp
     src/rpg/RulesetJson.cpp
     src/rpg/Stats.cpp
+    src/rpg/Tactics.cpp
     src/save/SaveFile.cpp
     src/text/RichText.cpp
     src/text/Strings.cpp

@@ -37,6 +37,13 @@ struct Light
     bool shadows = true;
 };
 
+// A part of the world with its own ambient light: the inside of a building on a sunny day.
+struct Shade
+{
+    Rect area; // world units
+    Color ambient;
+};
+
 // Draw the world first, then apply(): an additive light target is multiplied over the world.
 // UI drawn afterwards stays bright. Ambient colour supports daylight/night transitions.
 class Lighting
@@ -47,7 +54,9 @@ public:
     Lighting(const Lighting&) = delete;
     Lighting& operator=(const Lighting&) = delete;
     Color ambient{35, 38, 50, 255};
-    void apply(Renderer& renderer, const Camera& camera, std::span<const Light> lights, std::span<const Wall> walls);
+    // Lights add on top of the ambient, shaded areas included.
+    void apply(Renderer& renderer, const Camera& camera, std::span<const Light> lights, std::span<const Wall> walls,
+        std::span<const Shade> shaded = {});
 
 private:
     Visibility visibility_;

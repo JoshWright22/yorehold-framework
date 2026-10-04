@@ -30,6 +30,7 @@
 #include <yorehold/framework/graphics/Particles.h>
 #include <yorehold/framework/rpg/Character.h>
 #include <yorehold/framework/rpg/Combat.h>
+#include <yorehold/framework/rpg/Compendium.h>
 #include <yorehold/framework/save/SaveFile.h>
 #include <yorehold/framework/text/RichText.h>
 #include <yorehold/framework/text/Strings.h>
@@ -514,6 +515,135 @@ void rpg()
     CHECK(!fight.spendMovement(-1) && fight.current().budget.movementLeft == movement);
     CHECK(fight.spendMovement(1) && fight.current().budget.movementLeft == movement - 1);
     CHECK(fight.dash() && !fight.canAct() && !fight.dash());
+}
+
+// An open field: `self` can walk `speed` squares (twice that with a dash) and everyone else stands still.
+yh::TacticalView openField(const yh::Grid& grid, std::vector<yh::TacticalUnit> units, size_t self, int speed)
+{
+    yh::TacticalView view;
+    view.units = std::move(units);
+    view.self = self;
+    const yh::TacticalUnit& me = view.units[self];
+    for (int y = -5; y < 30; y++)
+    {
+        for (int x = -5; x < 30; x++)
+        {
+            const yh::Cell c{x, y};
+            float nearest = 1e9f;
+            bool taken = false;
+            for (size_t i = 0; i < view.units.size(); i++)
+            {
+                taken |= i != self && view.units[i].at == c;
+                if (view.units[i].team != me.team)
+                    nearest = std::min(nearest, grid.distance(c, view.units[i].at));
+            }
+            view.foeDistance[c] = nearest;
+            const float cost = grid.distance(me.at, c);
+            if (taken)
+                continue;
+            if (cost <= static_cast<float>(speed)) view.reach[c] = cost;
+            if (cost <= static_cast<float>(speed * 2)) view.dashReach[c] = cost;
+        }
+    }
+    view.sideAtStart = static_cast<int>(std::count_if(view.units.begin(), view.units.end(), [&](const yh::TacticalUnit& u) { return u.team == me.team; }));
+    return view;
+}
+
+void tactics()
+{
+    using Kind = yh::TacticalChoice::Kind;
+    const yh::Grid grid(yh::GridType::Square, 64);
+    yh::Random random(11);
+
+    // Profiles: presets by name, overrides on a base, and only the differences written back.
+    CHECK(yh::AiProfile::preset("mindless") && yh::AiProfile::preset("animal") && yh::AiProfile::preset("cunning") && yh::AiProfile::preset("tactical"));
+    CHECK(!yh::AiProfile::preset("genius") && !yh::AiProfile::fromJson(R"("genius")") && !yh::AiProfile::fromJson(R"({"base":"cunning","fleeHp":-1})"));
+    const auto byName = yh::AiProfile::fromJson(R"("animal")");
+    CHECK(byName && byName->base == "animal" && byName->fleeHp == yh::AiProfile::preset("animal")->fleeHp);
+    const auto coward = yh::AiProfile::fromJson(R"({"base":"cunning","fleeHp":0.9,"leader":true})");
+    CHECK(coward && coward->fleeHp == 0.9f && coward->leader && coward->pack == yh::AiProfile::preset("cunning")->pack);
+    CHECK(coward && coward->toJson() == R"({"base":"cunning","fleeHp":0.8999999761581421,"leader":true})");
+    const auto again = coward ? yh::AiProfile::fromJson(coward->toJson()) : std::nullopt;
+    CHECK(again && again->fleeHp == coward->fleeHp && again->leader);
+    const auto creature = yh::Compendium::creatureFromJson(R"({"id":"wolf","ai":{"base":"animal","pack":3}})");
+    CHECK(creature && creature->ai.base == "animal" && creature->ai.pack == 3);
+    const auto kept = creature ? yh::Compendium::creatureFromJson(yh::Compendium::creatureToJson(*creature)) : std::nullopt;
+    CHECK(kept && kept->ai.pack == 3 && kept->ai.fleeHp == creature->ai.fleeHp);
+    CHECK(!yh::Compendium::creatureFromJson(R"({"id":"wolf","ai":"clever"})"));
+
+    const yh::AiProfile mindless = *yh::AiProfile::preset("mindless");
+    const yh::AiProfile cunning = *yh::AiProfile::preset("cunning");
+    yh::AiProfile tactical = *yh::AiProfile::preset("tactical");
+    tactical.random = 0;
+    yh::AiProfile sure = mindless;
+    sure.random = 0;
+
+    // A healthy hero two squares away and a nearly dead one five away: the mindless creature takes
+    // the near one, the tactical one walks further to finish the wounded.
+    const yh::TacticalUnit me{1, {10, 10}, 10, 10, 13, 4, 5, 6};
+    const yh::TacticalUnit healthy{0, {12, 10}, 20, 20, 14, 5, 6, 6};
+    const yh::TacticalUnit wounded{0, {10, 15}, 2, 20, 14, 5, 6, 6};
+    const yh::TacticalView twoTargets = openField(grid, {me, healthy, wounded}, 0, 6);
+    const yh::TacticalChoice dumb = yh::decide(sure, twoTargets, grid, random);
+    CHECK(dumb.kind == Kind::Attack && dumb.target == 1 && grid.distance(dumb.cell, healthy.at) <= 1.01f && !dumb.dash);
+    std::vector<yh::TacticalChoice> considered;
+    const yh::TacticalChoice smart = yh::decide(tactical, twoTargets, grid, random, &considered);
+    CHECK(smart.kind == Kind::Attack && smart.target == 2 && grid.distance(smart.cell, wounded.at) <= 1.01f);
+    CHECK(considered.size() > 2 && considered.front().score == smart.score
+        && std::is_sorted(considered.begin(), considered.end(), [](const auto& a, const auto& b) { return a.score > b.score; }));
+
+    // Where to stand: the careful one attacks from a square the second hero isn't next to.
+    const yh::TacticalUnit left{0, {12, 10}, 20, 20, 14, 5, 6, 6};
+    const yh::TacticalUnit right{0, {14, 10}, 20, 20, 14, 5, 6, 6};
+    const yh::TacticalChoice careful = yh::decide(tactical, openField(grid, {me, left, right}, 0, 6), grid, random);
+    CHECK(careful.kind == Kind::Attack && grid.distance(careful.cell, careful.target == 1 ? right.at : left.at) > 1.01f);
+
+    // Nobody in reach: it closes in, dashing to get nearer. With no action left it just walks.
+    const yh::TacticalUnit far{0, {25, 10}, 20, 20, 14, 5, 6, 6};
+    yh::TacticalView distant = openField(grid, {me, far}, 0, 6);
+    const yh::TacticalChoice rush = yh::decide(sure, distant, grid, random);
+    CHECK(rush.kind == Kind::Advance && rush.dash && grid.distance(rush.cell, far.at) <= 3.01f);
+    distant.action = false;
+    const yh::TacticalChoice walk = yh::decide(sure, distant, grid, random);
+    CHECK(walk.kind == Kind::Advance && !walk.dash && grid.distance(walk.cell, me.at) <= 6.01f && grid.distance(walk.cell, far.at) <= 9.01f);
+
+    // Morale. Badly hurt: the cunning one runs (the mindless one never does); once running it keeps
+    // running; with nowhere to go it turns and fights.
+    yh::TacticalUnit hurt = me;
+    hurt.hp = 2;
+    yh::TacticalView losing = openField(grid, {hurt, healthy}, 0, 6);
+    CHECK(yh::wantsToFlee(cunning, losing) && !yh::wantsToFlee(mindless, losing) && !yh::wantsToFlee(cunning, twoTargets));
+    const yh::TacticalChoice run = yh::decide(cunning, losing, grid, random);
+    CHECK(run.kind == Kind::Flee && run.dash && grid.distance(run.cell, healthy.at) >= 13.9f);
+    CHECK(yh::decide(mindless, losing, grid, random).kind == Kind::Attack);
+    yh::TacticalView rallied = openField(grid, {me, healthy}, 0, 6);
+    rallied.fleeing = true;
+    CHECK(yh::decide(cunning, rallied, grid, random).kind == Kind::Flee);
+    yh::TacticalView cornered = losing;
+    cornered.reach = {{hurt.at, 0.0f}, {{11, 10}, 1.0f}};
+    cornered.dashReach = cornered.reach;
+    CHECK(yh::decide(cunning, cornered, grid, random).kind == Kind::Attack);
+
+    // Losses and leaders: three of four down breaks the cunning; so does losing the chief.
+    yh::TacticalView lastOne = openField(grid, {me, healthy}, 0, 6);
+    lastOne.sideAtStart = 4;
+    CHECK(yh::wantsToFlee(cunning, lastOne) && !yh::wantsToFlee(tactical, lastOne));
+    yh::TacticalUnit chief = me;
+    chief.at = {9, 10};
+    chief.leader = true;
+    yh::TacticalView led = openField(grid, {me, healthy, chief}, 0, 6);
+    led.hadLeader = true;
+    CHECK(!yh::wantsToFlee(cunning, led));
+    led.units.pop_back();
+    led.sideAtStart = 2;
+    CHECK(yh::wantsToFlee(cunning, led));
+    led.hadLeader = false;
+    CHECK(!yh::wantsToFlee(cunning, led));
+
+    // The same seed makes the same (noisy) choice.
+    yh::Random one(5), two(5);
+    const yh::TacticalChoice first = yh::decide(cunning, twoTargets, grid, one), second = yh::decide(cunning, twoTargets, grid, two);
+    CHECK(first.kind == second.kind && first.cell == second.cell && first.target == second.target && first.score == second.score);
 }
 
 void savesAndHistory()
@@ -1015,6 +1145,7 @@ int main()
         {"Input/files/themes", inputFilesAndTheme},
         {"Audio/scenes", audioAndScenes},
         {"RPG", rpg},
+        {"Tactics", tactics},
         {"Saves/history", savesAndHistory},
         {"Networking", networking},
         {"Text editing", textEditing},

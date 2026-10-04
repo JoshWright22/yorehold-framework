@@ -2,6 +2,7 @@
 
 #include "yorehold/framework/graphics/Renderer.h"
 #include "yorehold/framework/rpg/Character.h"
+#include "yorehold/framework/rpg/Tactics.h"
 
 #include <map>
 #include <optional>
@@ -50,6 +51,7 @@ struct CreatureDefinition
     std::set<std::string> proficiencies;
     std::vector<std::string> items;
     TokenLook token;
+    AiProfile ai = *AiProfile::preset("cunning"); // how it fights when the game plays it
 };
 
 // Every class, item and creature a game knows about, loaded from one JSON file each:

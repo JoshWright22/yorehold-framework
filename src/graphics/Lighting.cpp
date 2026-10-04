@@ -75,7 +75,8 @@ std::span<const Vec2> Visibility::compute(Vec2 origin, float radius, std::span<c
     return polygon_;
 }
 
-void Lighting::apply(Renderer& renderer, const Camera& camera, std::span<const Light> lights, std::span<const Wall> walls)
+void Lighting::apply(Renderer& renderer, const Camera& camera, std::span<const Light> lights, std::span<const Wall> walls,
+    std::span<const Shade> shaded)
 {
     const Vec2 size{std::ceil(camera.viewport().x), std::ceil(camera.viewport().y)};
     if (size.x <= 0 || size.y <= 0) return;
@@ -88,8 +89,12 @@ void Lighting::apply(Renderer& renderer, const Camera& camera, std::span<const L
     }
     const BlendMode previous = renderer.blendMode();
     renderer.pushTarget(target_, ambient);
-    renderer.setBlendMode(BlendMode::Additive);
     camera.apply(renderer);
+    renderer.setBlendMode(BlendMode::Alpha);
+    for (const Shade& shade : shaded)
+        if (renderer.visible(shade.area))
+            renderer.fillRect(shade.area, {shade.ambient.r, shade.ambient.g, shade.ambient.b, 255});
+    renderer.setBlendMode(BlendMode::Additive);
     for (const Light& light : lights)
     {
         const Rect area{light.position.x - light.radius, light.position.y - light.radius, light.radius * 2, light.radius * 2};

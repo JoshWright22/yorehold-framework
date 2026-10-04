@@ -138,6 +138,13 @@ std::optional<CreatureDefinition> Compendium::creatureFromJson(std::string_view 
             c.token.size = t.value("size", c.token.size);
             c.token.image = t.value("image", "");
         }
+        if (j.contains("ai"))
+        {
+            std::string problem;
+            const std::optional<AiProfile> ai = AiProfile::fromJson(j.at("ai").dump(), &problem);
+            if (!ai) throw std::invalid_argument(problem);
+            c.ai = *ai;
+        }
         if (!validId(c.id)) throw std::invalid_argument("Creature ids use a-z, 0-9, - and _");
         if (c.hp < 1 || c.hp > 100000 || c.armorClass < 0 || c.armorClass > 100 || c.speed < 0 || c.speed > 1000
             || c.darkvision < 0 || c.darkvision > 10000 || !std::isfinite(c.token.size) || c.token.size <= 0 || c.token.size > 10)
@@ -167,7 +174,8 @@ std::string Compendium::creatureToJson(const CreatureDefinition& c)
     const Color k = c.token.color;
     return json{{"id", c.id}, {"name", c.name}, {"description", c.description}, {"hp", c.hp}, {"armorClass", c.armorClass},
         {"speed", c.speed}, {"darkvision", c.darkvision}, {"abilities", c.abilities}, {"proficiencies", c.proficiencies}, {"items", c.items},
-        {"token", {{"color", {k.r, k.g, k.b, k.a}}, {"size", c.token.size}, {"image", c.token.image}}}}.dump(2);
+        {"token", {{"color", {k.r, k.g, k.b, k.a}}, {"size", c.token.size}, {"image", c.token.image}}},
+        {"ai", json::parse(c.ai.toJson())}}.dump(2);
 }
 
 bool Compendium::load(const FileSystem& files, std::string_view folder, std::string* error)
