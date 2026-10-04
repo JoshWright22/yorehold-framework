@@ -24,6 +24,7 @@
 #include <yorehold/framework/map/Regions.h>
 #include <yorehold/framework/map/Templates.h>
 #include <yorehold/framework/map/Tokens.h>
+#include <yorehold/framework/net/Http.h>
 #include <yorehold/framework/net/Session.h>
 #include <yorehold/framework/Scenes.h>
 #include <yorehold/framework/graphics/Particles.h>
@@ -970,6 +971,30 @@ void networking()
         SDL_Delay(5);
     }
     CHECK(refused);
+
+    // HTTP: addresses, Basic-auth encoding, and a failed request still reaching its callback.
+    const auto local = yh::parseUrl("http://127.0.0.1:7350/v2/rpc/roll?unwrap=true");
+    CHECK(local && !local->secure && local->host == "127.0.0.1" && local->port == 7350 && local->path == "/v2/rpc/roll?unwrap=true");
+    const auto secure = yh::parseUrl("https://play.example.com");
+    CHECK(secure && secure->secure && secure->host == "play.example.com" && secure->port == 443 && secure->path == "/");
+    const auto v6 = yh::parseUrl("http://[::1]:8080?x=1");
+    CHECK(v6 && v6->host == "::1" && v6->port == 8080 && v6->path == "/?x=1");
+    CHECK(!yh::parseUrl("ftp://example.com") && !yh::parseUrl("http://") && !yh::parseUrl("http://host:0") && !yh::parseUrl("http://host:99999"));
+    CHECK(yh::base64("") == "" && yh::base64("f") == "Zg==" && yh::base64("fo") == "Zm8=" && yh::base64("foobar") == "Zm9vYmFy" && yh::base64("key:") == "a2V5Og==");
+
+    yh::HttpClient http;
+    std::optional<yh::HttpResponse> answer;
+    bool calledOnPoll = false;
+    http.send({.url = "http://127.0.0.1:1/", .timeoutMs = 3000}, [&](const yh::HttpResponse& response) { answer = response; });
+    http.send({.url = "nonsense"}, [&](const yh::HttpResponse& response) { calledOnPoll = response.error == "bad address"; });
+    CHECK(http.pending() == 2);
+    for (int i = 0; i < 2000 && http.pending(); ++i)
+    {
+        http.poll();
+        SDL_Delay(5);
+    }
+    CHECK(answer && answer->status == 0 && !answer->ok() && !answer->error.empty());
+    CHECK(calledOnPoll && http.pending() == 0);
 }
 }
 

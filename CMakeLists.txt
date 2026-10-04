@@ -137,6 +137,7 @@ add_library(yorehold-framework
     src/map/Templates.cpp
     src/map/TileMap.cpp
     src/map/Tokens.cpp
+    src/net/Http.cpp
     src/net/Loopback.cpp
     src/net/Session.cpp
     src/net/Tcp.cpp
@@ -169,7 +170,7 @@ target_link_libraries(yorehold-framework
     PRIVATE ${YOREHOLD_WEBGPU_TARGET} yorehold-miniz webp
 )
 if(WIN32)
-    target_link_libraries(yorehold-framework PRIVATE ws2_32)
+    target_link_libraries(yorehold-framework PRIVATE ws2_32 winhttp)
 endif()
 
 if(EMSCRIPTEN)
