@@ -76,6 +76,12 @@ const Item* Character::weapon() const
     return nullptr;
 }
 
+int Character::strikeCost(const Ruleset& rules) const
+{
+    const Item* held = weapon();
+    return rules.strikeCostsHands && held ? std::clamp(held->hands, 1, rules.actionsPerTurn) : 1;
+}
+
 int Character::attackModifier(const Ruleset& rules) const
 {
     const Item* held = weapon();

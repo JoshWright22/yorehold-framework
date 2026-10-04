@@ -300,7 +300,7 @@ TacticalChoice decideByUtility(const AiProfile& profile, const TacticalView& vie
     const std::string breakAs = !view.breakAs.empty() ? view.breakAs : profile.onBreak.empty() ? "flee" : profile.onBreak.front().first;
     if (breakAs != "fight" && wantsToFlee(profile, view))
     {
-        const CellCosts& cells = view.action && !view.dashReach.empty() ? view.dashReach : view.reach;
+        const CellCosts& cells = view.actions >= 1 && !view.dashReach.empty() ? view.dashReach : view.reach;
         auto giveUp = [&] {
             TacticalChoice yield;
             yield.kind = TacticalChoice::Kind::Surrender;
@@ -366,8 +366,17 @@ TacticalChoice decideByUtility(const AiProfile& profile, const TacticalView& vie
     hold.score = -profile.danger * danger(me.at);
     options.push_back(hold);
 
-    if (view.action)
+    if (view.actions >= view.strikeCost)
     {
+        // With an action to spare it can dash in first.
+        const CellCosts& cells = view.actions >= view.strikeCost + 1 && !view.dashReach.empty() ? view.dashReach : view.reach;
+        // "nearby" weighs the walk against the shortest one to anybody, so a long way to the only
+        // target still beats standing about.
+        float shortest = 1e9f;
+        for (const TacticalUnit& target : view.units)
+            if (target.team != me.team)
+                for (const auto& [cell, cost] : cells)
+                    if (beside(grid, cell, target.at)) shortest = std::min(shortest, cost);
         for (size_t t = 0; t < view.units.size(); t++)
         {
             const TacticalUnit& target = view.units[t];
@@ -386,7 +395,7 @@ TacticalChoice decideByUtility(const AiProfile& profile, const TacticalView& vie
                 + profile.weak * 3.0f * (1.0f - static_cast<float>(target.hp) / static_cast<float>(std::max(1, target.maxHp)))
                 + profile.isolated * (friends == 0 ? 2.0f : 0.0f)
                 + profile.pack * 1.5f * static_cast<float>(mine);
-            for (const auto& [cell, cost] : view.reach)
+            for (const auto& [cell, cost] : cells)
             {
                 if (!beside(grid, cell, target.at))
                     continue;
@@ -394,8 +403,9 @@ TacticalChoice decideByUtility(const AiProfile& profile, const TacticalView& vie
                 attack.kind = TacticalChoice::Kind::Attack;
                 attack.cell = cell;
                 attack.target = t;
+                attack.dash = !view.reach.contains(cell);
                 // Hitting someone beats walking about, whoever it is.
-                attack.score = 5 + who - profile.nearby * cost * 0.5f - profile.danger * danger(cell) - cost * 0.01f;
+                attack.score = 5 + who - profile.nearby * (cost - shortest) * 0.5f - profile.danger * danger(cell) - cost * 0.01f;
                 options.push_back(attack);
             }
         }
@@ -405,7 +415,7 @@ TacticalChoice decideByUtility(const AiProfile& profile, const TacticalView& vie
     const bool canAttack = std::any_of(options.begin(), options.end(), [](const TacticalChoice& o) { return o.kind == TacticalChoice::Kind::Attack; });
     if (!canAttack && here < unreachable)
     {
-        const CellCosts& cells = view.action && !view.dashReach.empty() ? view.dashReach : view.reach;
+        const CellCosts& cells = view.actions >= 1 && !view.dashReach.empty() ? view.dashReach : view.reach;
         for (const auto& [cell, cost] : cells)
         {
             const float closer = here - costAt(view.foeDistance, cell, unreachable);

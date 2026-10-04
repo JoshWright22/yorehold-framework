@@ -8,11 +8,11 @@
 namespace yh
 {
 
-// What a combatant still has this turn.
+// What a combatant still has this turn. How many actions a turn brings is up to the ruleset.
 struct TurnBudget
 {
-    bool action = true;
-    bool bonusAction = true;
+    int actions = 1;
+    bool bonusAction = true; // rulesets without bonus actions start the turn with this false
     bool reaction = true; // refreshes at the start of your own turn
     int movementLeft = 0; // squares
 };
@@ -66,13 +66,25 @@ public:
     // Ends the current turn; skips anyone who's down, out or surprised. Ticks conditions when a round ends.
     void nextTurn();
 
-    bool canAct() const { return started_ && !order_.empty() && order_[current_].standing() && !finished() && order_[current_].budget.action; }
-    // Spends the action. Attack roll vs AC; a natural 20 always hits and doubles the dice.
+    // The current combatant has `cost` actions left.
+    bool canAct(int cost = 1) const
+    {
+        return started_ && !order_.empty() && order_[current_].standing() && !finished() && order_[current_].budget.actions >= cost;
+    }
+    // What a Strike costs the current combatant (see Character::strikeCost).
+    int strikeCost() const;
+    bool canStrike() const { return canAct(strikeCost()); }
+    // Spends strikeCost() actions. Attack roll vs AC; a natural 20 always hits and doubles the dice.
     AttackResult attack(size_t targetIndex);
-    // Spends the action for double movement this turn.
+    // Stride: spends an action to move its speed again.
     bool dash();
+    // Spends actions on anything else (Defend, Help, Interact...); false if there aren't enough.
+    bool spendActions(int count);
     // Spends `squares` of movement; false if there isn't enough.
     bool spendMovement(int squares);
+    // Spends a combatant's reaction (an opportunity attack, a readied action). It comes back at the
+    // start of their own turn. False if it's already gone or they can't act.
+    bool useReaction(size_t index);
 
     // True once only one team is left standing.
     bool finished() const;

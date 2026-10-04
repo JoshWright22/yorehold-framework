@@ -154,6 +154,10 @@ Ruleset Ruleset::modern()
     };
     r.reviveAfterVictory = 1;
     r.hitDieByClass = {{"Barbarian", 12}, {"Fighter", 10}, {"Cleric", 8}, {"Rogue", 8}, {"Wizard", 6}};
+    // Two actions a turn, no bonus action; a two-handed weapon takes both to swing.
+    r.actionsPerTurn = 2;
+    r.bonusActions = false;
+    r.strikeCostsHands = true;
     return r;
 }
 

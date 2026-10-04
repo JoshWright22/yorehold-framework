@@ -516,7 +516,31 @@ void rpg()
     const auto movement = fight.current().budget.movementLeft;
     CHECK(!fight.spendMovement(-1) && fight.current().budget.movementLeft == movement);
     CHECK(fight.spendMovement(1) && fight.current().budget.movementLeft == movement - 1);
-    CHECK(fight.dash() && !fight.canAct() && !fight.dash());
+    // Two actions a turn: dash twice and that's it. No bonus action; the reaction is there.
+    CHECK(fight.current().budget.actions == 2 && !fight.current().budget.bonusAction && fight.current().budget.reaction);
+    CHECK(fight.dash() && fight.canAct() && fight.dash() && !fight.canAct() && !fight.dash() && !fight.spendActions(1));
+    CHECK(fight.useReaction(fight.currentIndex()) && !fight.useReaction(fight.currentIndex()));
+    fight.nextTurn();
+    fight.nextTurn();
+    CHECK(fight.current().budget.reaction && fight.spendActions(1) && !fight.spendActions(2) && fight.spendActions(1));
+
+    // A two-handed weapon takes both actions to swing; under the classic rules anything takes the one action.
+    yh::Item greatsword{"greatsword", "Greatsword", "mainHand", "2d6"};
+    greatsword.hands = 2;
+    greatsword.equipped = true;
+    yh::Character giant = yh::makeRandomCharacter(rules, "giant", "fighter", a);
+    giant.inventory.push_back(greatsword);
+    CHECK(giant.strikeCost(rules) == 2 && hero.strikeCost(rules) == 1 && giant.strikeCost(yh::Ruleset::classic()) == 1);
+    CHECK(yh::Character::fromJson(giant.toJson())->strikeCost(rules) == 2);
+    yh::Encounter swing(rules, 3); swing.add(giant, 0); swing.add(enemy, 1); swing.start();
+    while (swing.current().character != &giant) swing.nextTurn();
+    CHECK(swing.canStrike() && swing.dash() && !swing.canStrike() && swing.canAct());
+    const yh::Ruleset classic = yh::Ruleset::classic();
+    yh::Encounter old(classic, 3); old.add(hero, 0); old.add(enemy, 1); old.start();
+    CHECK(old.current().budget.actions == 1 && old.current().budget.bonusAction && old.dash() && !old.canAct());
+    const auto turns = yh::Ruleset::fromJson(rules.toJson());
+    CHECK(turns && turns->actionsPerTurn == 2 && turns->strikeCostsHands && !turns->bonusActions);
+    CHECK(!yh::Ruleset::fromJson(R"({"id":"x","name":"x","abilities":[{"id":"con","name":"Con"}],"actionsPerTurn":0})"));
 }
 
 // An open field: `self` can walk `speed` squares (twice that with a dash) and everyone else stands still.
@@ -638,6 +662,17 @@ void tactics()
     CHECK(considered.size() > 2 && considered.front().score == smart.score
         && std::is_sorted(considered.begin(), considered.end(), [](const auto& a, const auto& b) { return a.score > b.score; }));
 
+    // A hero nine squares off: with one action it can only close in; with two it dashes and strikes;
+    // with a two-handed weapon it needs both actions for the swing, so it closes in again.
+    const yh::TacticalUnit farAway{0, {19, 10}, 20, 20, 14, 5, 6, 6};
+    yh::TacticalView distantHero = openField(grid, {me, farAway}, 0, 6);
+    CHECK(yh::decide(sure, distantHero, grid, random).kind == Kind::Advance);
+    distantHero.actions = 2;
+    const yh::TacticalChoice charge = yh::decide(sure, distantHero, grid, random);
+    CHECK(charge.kind == Kind::Attack && charge.dash && grid.distance(charge.cell, farAway.at) <= 1.01f);
+    distantHero.strikeCost = 2;
+    CHECK(yh::decide(sure, distantHero, grid, random).kind == Kind::Advance);
+
     // Where to stand: the careful one attacks from a square the second hero isn't next to.
     const yh::TacticalUnit left{0, {12, 10}, 20, 20, 14, 5, 6, 6};
     const yh::TacticalUnit right{0, {14, 10}, 20, 20, 14, 5, 6, 6};
@@ -649,7 +684,7 @@ void tactics()
     yh::TacticalView distant = openField(grid, {me, far}, 0, 6);
     const yh::TacticalChoice rush = yh::decide(sure, distant, grid, random);
     CHECK(rush.kind == Kind::Advance && rush.dash && grid.distance(rush.cell, far.at) <= 3.01f);
-    distant.action = false;
+    distant.actions = 0;
     const yh::TacticalChoice walk = yh::decide(sure, distant, grid, random);
     CHECK(walk.kind == Kind::Advance && !walk.dash && grid.distance(walk.cell, me.at) <= 6.01f && grid.distance(walk.cell, far.at) <= 9.01f);
 

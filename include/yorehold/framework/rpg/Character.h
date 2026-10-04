@@ -20,6 +20,7 @@ struct Item
     std::string slot;   // where it's worn/held: "mainHand", "offHand", "armor", "head", "ring"... empty = can't equip
     std::string damage; // dice, for weapons ("1d8")
     std::string attackAbility = "str"; // finesse/ranged weapons use "dex"
+    int hands = 1;      // hands needed to use it (a greatsword or bow: 2)
     float weight = 0;   // pounds
     int value = 0;      // copper
     int quantity = 1;
@@ -79,6 +80,8 @@ public:
     const Item* weapon() const;
     int attackModifier(const Ruleset& rules) const;
     std::string damageDice(const Ruleset& rules) const;
+    // Actions a Strike takes: the weapon's hands where the ruleset says so, otherwise 1.
+    int strikeCost(const Ruleset& rules) const;
     // Conditions can force advantage/disadvantage on attacks.
     Advantage attackAdvantage(const Ruleset& rules) const;
 

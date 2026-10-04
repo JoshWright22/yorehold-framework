@@ -86,9 +86,10 @@ struct TacticalView
 {
     std::vector<TacticalUnit> units; // everyone still standing, both sides
     size_t self = 0;
-    bool action = true;    // it can still attack or dash this turn
+    int actions = 1;       // actions it has left this turn
+    int strikeCost = 1;    // actions a Strike takes it
     CellCosts reach;       // squares it can end on with the movement it has (the one it stands on costs 0)
-    CellCosts dashReach;   // ... and with a dash on top; empty = can't dash
+    CellCosts dashReach;   // ... and with a dash (an action) on top; empty = can't dash
     CellCosts foeDistance; // squares of walking from each cell to the nearest foe
     int sideAtStart = 1;   // how many its side began the fight with
     bool hadLeader = false;
@@ -105,7 +106,7 @@ struct TacticalChoice
     Kind kind = Kind::Hold;
     Cell cell;         // where it ends its move (its own cell = stays put)
     size_t target = 0; // index into units, for Attack
-    bool dash = false; // the move needs a dash
+    bool dash = false; // the move needs a dash (then the Strike, for Attack)
     float score = 0;
 };
 

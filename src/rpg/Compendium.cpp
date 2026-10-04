@@ -51,6 +51,8 @@ Item itemFrom(const json& j)
     item.slot = j.value("slot", "");
     item.damage = j.value("damage", "");
     item.attackAbility = j.value("attackAbility", "str");
+    item.hands = j.value("hands", 1);
+    if (item.hands < 0 || item.hands > 4) throw std::invalid_argument("Items need 0 to 4 hands");
     item.weight = j.value("weight", 0.0f);
     item.value = j.value("value", 0);
     item.quantity = j.value("quantity", 1);
@@ -157,7 +159,7 @@ std::string Compendium::itemToJson(const Item& item)
     for (const Modifier& m : item.modifiers)
         modifiers.push_back({{"stat", m.stat}, {"op", opName(m.op)}, {"value", m.value}});
     return json{{"id", item.id}, {"name", item.name}, {"slot", item.slot}, {"damage", item.damage},
-        {"attackAbility", item.attackAbility}, {"weight", item.weight}, {"value", item.value},
+        {"attackAbility", item.attackAbility}, {"hands", item.hands}, {"weight", item.weight}, {"value", item.value},
         {"quantity", item.quantity}, {"modifiers", modifiers}}.dump(2);
 }
 

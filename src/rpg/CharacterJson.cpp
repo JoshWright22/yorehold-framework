@@ -4,6 +4,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
+
 namespace yh
 {
 
@@ -84,7 +86,7 @@ std::string Character::toJson() const
             itemModifiers.push_back(modifierJson(m));
         items.push_back({
             {"id", item.id}, {"name", item.name}, {"slot", item.slot}, {"damage", item.damage},
-            {"attackAbility", item.attackAbility}, {"weight", item.weight}, {"value", item.value},
+            {"attackAbility", item.attackAbility}, {"hands", item.hands}, {"weight", item.weight}, {"value", item.value},
             {"quantity", item.quantity}, {"equipped", item.equipped}, {"modifiers", itemModifiers},
         });
     }
@@ -151,6 +153,7 @@ std::optional<Character> Character::fromJson(std::string_view text, std::string*
                 item.slot = i.value("slot", "");
                 item.damage = i.value("damage", "");
                 item.attackAbility = i.value("attackAbility", "str");
+                item.hands = std::clamp(i.value("hands", 1), 0, 4);
                 item.weight = i.value("weight", 0.0f);
                 item.value = i.value("value", 0);
                 item.quantity = i.value("quantity", 1);

@@ -85,6 +85,10 @@ struct Ruleset
     std::vector<int> proficiencyByLevel;
     // Total XP needed to reach each level; index 0 = level 2.
     std::vector<int> xpForLevel;
+    // A combat turn: free movement up to speed, plus this many actions.
+    int actionsPerTurn = 1;
+    bool bonusActions = true;       // a bonus action each turn as well
+    bool strikeCostsHands = false;  // a Strike costs one action per hand the weapon needs
     int feetPerSquare = 5;
     int carryPerStrength = 15; // pounds per point of the first ability (strength)
 

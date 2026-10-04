@@ -91,7 +91,7 @@ void Encounter::start()
 void Encounter::beginTurn()
 {
     Combatant& c = order_[current_];
-    c.budget = {true, true, true, c.character->speedSquares(rules_)};
+    c.budget = {rules_.actionsPerTurn, rules_.bonusActions, true, c.character->speedSquares(rules_)};
     addLog(c.character->name + "'s turn");
 }
 
@@ -133,12 +133,12 @@ void Encounter::nextTurn()
 AttackResult Encounter::attack(size_t targetIndex)
 {
     AttackResult result;
-    if (!canAct() || targetIndex >= order_.size() || !order_[targetIndex].standing())
+    if (!canStrike() || targetIndex >= order_.size() || !order_[targetIndex].standing())
         return result;
     Combatant& attacker = order_[current_];
     Character& target = *order_[targetIndex].character;
     Character& self = *attacker.character;
-    attacker.budget.action = false;
+    attacker.budget.actions -= strikeCost();
 
     result.attackRoll = rollD20(self.attackModifier(rules_), self.attackAdvantage(rules_), random_);
     result.critical = result.attackRoll.natural20();
@@ -177,9 +177,30 @@ bool Encounter::dash()
     if (!canAct())
         return false;
     Combatant& c = order_[current_];
-    c.budget.action = false;
+    c.budget.actions--;
     c.budget.movementLeft += c.character->speedSquares(rules_);
     addLog(c.character->name + " dashes");
+    return true;
+}
+
+int Encounter::strikeCost() const
+{
+    if (order_.empty()) return 1;
+    return order_[current_].character->strikeCost(rules_);
+}
+
+bool Encounter::spendActions(int count)
+{
+    if (count < 0 || !canAct(count)) return false;
+    order_[current_].budget.actions -= count;
+    return true;
+}
+
+bool Encounter::useReaction(size_t index)
+{
+    if (!started_ || finished() || index >= order_.size() || !order_[index].standing() || !order_[index].budget.reaction)
+        return false;
+    order_[index].budget.reaction = false;
     return true;
 }
 

@@ -51,6 +51,7 @@ std::string Ruleset::toJson() const
         {"scoreMin", scoreMin}, {"scoreMax", scoreMax}, {"baseArmorClass", baseArmorClass},
         {"armorClassAbility", armorClassAbility}, {"initiativeAbility", initiativeAbility},
         {"proficiencyByLevel", proficiencyByLevel}, {"xpForLevel", xpForLevel},
+        {"actionsPerTurn", actionsPerTurn}, {"bonusActions", bonusActions}, {"strikeCostsHands", strikeCostsHands},
         {"feetPerSquare", feetPerSquare}, {"carryPerStrength", carryPerStrength}};
     j["abilities"] = J::array(); j["skills"] = J::array(); j["conditions"] = J::array(); j["rests"] = J::array();
     for (const auto& r : rests)
@@ -92,6 +93,10 @@ std::optional<Ruleset> Ruleset::fromJson(std::string_view json, std::string* err
         r.baseArmorClass = j.value("baseArmorClass", r.baseArmorClass);
         r.armorClassAbility = j.value("armorClassAbility", r.armorClassAbility);
         r.initiativeAbility = j.value("initiativeAbility", r.initiativeAbility);
+        r.actionsPerTurn = j.value("actionsPerTurn", r.actionsPerTurn);
+        r.bonusActions = j.value("bonusActions", r.bonusActions);
+        r.strikeCostsHands = j.value("strikeCostsHands", r.strikeCostsHands);
+        if (r.actionsPerTurn < 1 || r.actionsPerTurn > 10) throw std::invalid_argument("actionsPerTurn is 1 to 10");
         r.feetPerSquare = j.value("feetPerSquare", r.feetPerSquare);
         r.carryPerStrength = j.value("carryPerStrength", r.carryPerStrength);
         r.proficiencyByLevel = j.value("proficiencyByLevel", std::vector<int>{});

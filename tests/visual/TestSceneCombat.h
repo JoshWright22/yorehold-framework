@@ -92,14 +92,14 @@ public:
         {
             yh::Combatant& current = encounter_->current();
             const bool myTurn = current.team == 0;
-            std::snprintf(text, sizeof(text), "%s: action %s, move %d sq", current.character->name.c_str(),
-                current.budget.action ? "ready" : "used", current.budget.movementLeft);
+            std::snprintf(text, sizeof(text), "%s: actions %d, move %d sq", current.character->name.c_str(),
+                current.budget.actions, current.budget.movementLeft);
             ui_.label({x, y}, text);
             y += 30;
             const bool targetAlive = target_ && !encounter_->order()[*target_].character->down();
-            if (ui_.button({x, y, 150, 32}, "Attack", myTurn && current.budget.action && targetAlive))
+            if (ui_.button({x, y, 150, 32}, "Attack", myTurn && encounter_->canStrike() && targetAlive))
                 encounter_->attack(*target_);
-            if (ui_.button({x + 160, y, 100, 32}, "Dash", myTurn && current.budget.action))
+            if (ui_.button({x + 160, y, 100, 32}, "Dash", myTurn && encounter_->canAct()))
                 encounter_->dash();
             if (ui_.button({x + 270, y, 100, 32}, "Move 1", myTurn && current.budget.movementLeft > 0))
                 encounter_->spendMovement(1);
