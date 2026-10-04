@@ -144,6 +144,12 @@ public:
 
     void addXp(const Ruleset& rules, int amount); // levels up automatically
 
+    // Takes everything a character's choices decide from a freshly built sheet (see
+    // Compendium::build) and keeps this sheet's live state: HP lost, temporary HP, conditions and
+    // their modifiers, what it carries, death saves and resources spent. HP stays within the new
+    // maximum; a resource keeps its current amount up to the new maximum.
+    void adoptBuild(const Character& built);
+
     // Save files. Returns false and fills `error` if the JSON is broken.
     std::string toJson() const;
     static std::optional<Character> fromJson(std::string_view json, std::string* error = nullptr);

@@ -145,6 +145,7 @@ add_library(yorehold-framework
     src/rpg/Action.cpp
     src/rpg/Reaction.cpp
     src/rpg/Character.cpp
+    src/rpg/CharacterChoices.cpp
     src/rpg/CharacterDeath.cpp
     src/rpg/CharacterJson.cpp
     src/rpg/Combat.cpp
@@ -219,6 +220,7 @@ if(YOREHOLD_FRAMEWORK_UNIT_TESTS AND NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQ
         tests/unit/PositioningTests.cpp
         tests/unit/ProficiencyTests.cpp
         tests/unit/DeathTests.cpp
+        tests/unit/ChoicesTests.cpp
         tests/unit/CameraControlTests.cpp
         tests/unit/CutsceneTests.cpp
     )

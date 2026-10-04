@@ -8,6 +8,7 @@
 #include "PositioningTests.h"
 #include "ProficiencyTests.h"
 #include "DeathTests.h"
+#include "ChoicesTests.h"
 #include "CameraControlTests.h"
 #include "CutsceneTests.h"
 
@@ -1479,6 +1480,7 @@ int main()
         {"Flanking and cover", regression::positioning},
         {"Proficiency ranks", regression::proficiencies},
         {"Death saves", regression::deathSaves},
+        {"Character choices", regression::characterChoices},
         {"Camera controls", regression::cameraControls},
         {"Cutscenes", regression::cutscenes},
         {"Tweens", tweens},

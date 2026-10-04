@@ -377,22 +377,60 @@ const CreatureDefinition* Compendium::creature(std::string_view id) const
 
 std::optional<Character> Compendium::makeCharacter(const Ruleset& rules, std::string_view classId, std::string name, Random& random) const
 {
-    const ClassDefinition* definition = characterClass(classId);
-    if (!definition)
+    if (!characterClass(classId))
         return std::nullopt;
-    Character c = makeRandomCharacter(rules, std::move(name), definition->name, random);
-    c.hitDie = "1d" + std::to_string(definition->hitDie);
-    c.stats.setBase("speed", static_cast<float>(definition->speed));
-    c.stats.setBase("darkvision", static_cast<float>(definition->darkvision));
-    const int hp = std::max(1, definition->hitDie + definition->bonusHp + c.abilityModifier(rules, "con"));
+    return build(rules, rollChoices(rules, std::move(name), std::string(classId), random));
+}
+
+std::optional<Character> Compendium::build(const Ruleset& rules, const CharacterChoices& choices, std::string* error) const
+{
+    if (!choices.check(rules, error))
+        return std::nullopt;
+    std::vector<const ClassDefinition*> classes_;
+    for (size_t i = 0; i < choices.levels.size(); i++)
+    {
+        classes_.push_back(characterClass(choices.levels[i].classId));
+        if (!classes_.back())
+        {
+            if (error) *error = "levels[" + std::to_string(i) + "].class: no class \"" + choices.levels[i].classId + "\"";
+            return std::nullopt;
+        }
+    }
+    const ClassDefinition& first = *classes_.front();
+
+    Character c;
+    c.name = choices.name;
+    c.ancestry = choices.race;
+    c.notes = choices.notes;
+    c.level = choices.level();
+    c.xp = choices.xp;
+    std::set<std::string> named;
+    for (const ClassDefinition* definition : classes_)
+        if (named.insert(definition->id).second)
+            c.characterClass += (c.characterClass.empty() ? "" : " / ") + definition->name;
+    for (const auto& [ability, score] : choices.scores)
+        c.stats.setBase(ability, static_cast<float>(score));
+    c.stats.setBase("ac", static_cast<float>(rules.baseArmorClass));
+    c.hitDie = "1d" + std::to_string(first.hitDie);
+    c.stats.setBase("speed", static_cast<float>(first.speed));
+    c.stats.setBase("darkvision", static_cast<float>(first.darkvision));
+
+    const int con = c.abilityModifier(rules, "con");
+    int hp = std::max(1, first.hitDie + first.bonusHp + con);
+    for (size_t i = 1; i < classes_.size(); i++)
+        hp += std::max(1, classes_[i]->hitDie / 2 + 1 + con);
     c.stats.setBase("maxHp", static_cast<float>(hp));
     c.hp = hp;
-    c.proficiencies = definition->proficiencies;
-    c.proficiencyRanks = definition->proficiencyRanks;
-    c.dcAbility = definition->dcAbility;
-    c.resources = definition->resources;
-    if (!c.checkProficiencyRanks(rules)) return std::nullopt;
-    giveItems(c, definition->items);
+
+    c.proficiencies = first.proficiencies;
+    c.proficiencyRanks = first.proficiencyRanks;
+    c.dcAbility = first.dcAbility;
+    c.resources = first.resources;
+    for (const LevelChoice& level : choices.levels)
+        if (const auto skills = level.picks.find("skills"); skills != level.picks.end())
+            c.proficiencies.insert(skills->second.begin(), skills->second.end());
+    if (!c.checkProficiencyRanks(rules, error)) return std::nullopt;
+    giveItems(c, first.items);
     return c;
 }
 

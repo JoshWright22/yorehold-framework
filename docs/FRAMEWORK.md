@@ -171,6 +171,43 @@ Current defaults to max; both must be 0 to 100000 and current cannot exceed max.
 these into the sheet, letting resource requirements and effects operate without game-specific
 resource names in the framework.
 
+### Character choices
+
+A `CharacterChoices` is a character as the player made it, not the numbers that follow: the sheet
+is rebuilt from it and the ruleset whenever it is loaded, so a rules change shows up at once.
+
+```json
+{ "version": 1, "name": "Ana", "race": "elf", "background": "sailor",
+  "scoreMethod": "roll", "scores": { "str": 14, "dex": 12, "con": 15, "int": 10, "wis": 13, "cha": 8 },
+  "levels": [ { "class": "fighter" }, { "class": "rogue", "picks": { "skills": ["stealth"] } } ],
+  "xp": 900, "ruleset": "yorehold", "notes": "" }
+```
+
+| Field | Meaning |
+|---|---|
+| `scores` | Required. One score from 1 to 30 for each of the ruleset's abilities and no others (`check(rules)`), before race or background changes. |
+| `scoreMethod` | `roll`, `pointBuy`, `array` or `fixed` (the default): how the scores were reached, for a creation screen to reopen. |
+| `levels` | Required, 1 to 1000 entries: one per character level, the first being the starting class. `picks` maps a kind (`skills`, `feats`, `spells`...) to the ids taken at that level. |
+| `race`, `background` | Ids among the ruleset's options; empty where it has none. |
+| `xp`, `ruleset`, `notes` | Experience, the ruleset id the character was made under, and the player's notes. |
+
+Unknown fields and a `version` newer than 1 are refused with the field named. `rollChoices(rules,
+name, classId, random)` rolls a first-level character (4d6 keep 3 per ability, 3d6 for the
+classic table); `choicesFromSheet(rules, sheet, classId)` reads the scores and level back out of a
+sheet saved before choices existed (method `fixed`, every level in that class).
+
+`Compendium::build(rules, choices, &error)` makes the sheet: the scores, the first class's hit
+die, speed, darkvision, ranks, DC ability, resources and gear, and HP for every level (the first
+at the hit die's maximum plus the class's `bonusHp`, each later one at the level's class die
+averaged and rounded up; CON added each time, at least 1 a level). Skill picks become trained
+skills; other picks are kept for the features that read them. An unknown class fails with the
+level named. `makeCharacter` is `rollChoices` followed by `build`.
+
+`Character::adoptBuild(built)` brings a sheet that is in play up to date with a fresh build: it
+takes the names, level, scores and other base stats, ranks and resource maximums, and keeps the
+live state (HP lost, temporary HP, conditions and their modifiers, inventory, death saves,
+resources spent). HP and resources are cut to the new maximums.
+
 ### Effects
 
 An `Effect` is what a spell, an action, an item, a trap or a feature does: a list of steps, read from JSON and run by the framework. `Effect::fromJson` takes either the list itself or an object with `effects` and an optional `save`:

@@ -381,6 +381,28 @@ void Character::addXp(const Ruleset& rules, int amount)
     level = std::max(level, rules.levelForXp(xp));
 }
 
+void Character::adoptBuild(const Character& built)
+{
+    name = built.name;
+    ancestry = built.ancestry;
+    characterClass = built.characterClass;
+    level = built.level;
+    xp = std::max(xp, built.xp);
+    hitDie = built.hitDie;
+    notes = built.notes;
+    for (const auto& [stat, value] : built.stats.bases())
+        stats.setBase(stat, value);
+    proficiencies = built.proficiencies;
+    proficiencyRanks = built.proficiencyRanks;
+    dcAbility = built.dcAbility;
+    for (const auto& [id, resource] : built.resources)
+    {
+        const auto live = resources.find(id);
+        resources[id] = {live == resources.end() ? resource.current : std::clamp(live->second.current, 0, resource.max), resource.max};
+    }
+    hp = std::min(hp, maxHp());
+}
+
 Character makeRandomCharacter(const Ruleset& rules, std::string name, std::string characterClass, Random& random)
 {
     Character c;

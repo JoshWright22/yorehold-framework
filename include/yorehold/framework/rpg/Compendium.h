@@ -2,10 +2,12 @@
 
 #include "yorehold/framework/graphics/Renderer.h"
 #include "yorehold/framework/rpg/Character.h"
+#include "yorehold/framework/rpg/CharacterChoices.h"
 #include "yorehold/framework/rpg/Tactics.h"
 
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -96,6 +98,12 @@ public:
     // A first-level character of a class: rolled abilities, HP = hit die + CON + bonus, the
     // class's gear equipped. Returns nullopt for an unknown class.
     std::optional<Character> makeCharacter(const Ruleset& rules, std::string_view classId, std::string name, Random& random) const;
+    // The sheet a character's choices make under these rules: their scores; the first class's
+    // hit die, speed, ranks, resources and gear; HP for every level (the first at the hit die's
+    // maximum plus the class bonus, later ones at its average rounded up, each plus CON, at least
+    // 1). Skill picks become trained skills; other picks wait for the features that read them.
+    // nullopt, with `error` filled, for choices that don't fit the ruleset or name a missing class.
+    std::optional<Character> build(const Ruleset& rules, const CharacterChoices& choices, std::string* error = nullptr) const;
     // A creature from its stat block; `name` overrides the definition's (for "Snik the goblin").
     std::optional<Character> makeCreature(const Ruleset& rules, std::string_view creatureId, std::string name, Random& random) const;
 
