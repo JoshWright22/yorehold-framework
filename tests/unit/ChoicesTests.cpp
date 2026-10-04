@@ -317,6 +317,25 @@ void levelTables()
     CHECK(both && both->resources.at("slots-1").max == 4 && both->resources.at("recovery").max == 2);
 }
 
+void hands()
+{
+    yh::Character c;
+    auto item = [](const char* id, const char* slot, int hands) {
+        yh::Item i; i.id = id; i.name = id; i.slot = slot; i.hands = hands;
+        return i;
+    };
+    c.inventory = {item("sword", "mainHand", 1), item("shield", "offHand", 1), item("greatsword", "mainHand", 2), item("mail", "armor", 1)};
+    c.inventory[1].modifiers.push_back({"ac", yh::Modifier::Op::Add, 2, ""});
+    c.stats.setBase("ac", 10);
+    CHECK(c.equip(0) && c.equip(1) && c.equip(3) && c.handsInUse() == 2 && c.stats.integer("ac") == 12);
+    // Both hands on the greatsword: the sword leaves its slot and the shield its hand. Armour stays.
+    CHECK(c.equip(2) && c.handsInUse() == 2 && !c.inventory[0].equipped && !c.inventory[1].equipped && c.inventory[3].equipped
+        && c.stats.integer("ac") == 10);
+    // Taking the shield back up puts the greatsword away.
+    CHECK(c.equip(1) && !c.inventory[2].equipped && c.handsInUse() == 1 && !c.weapon());
+    CHECK(c.equip(0) && c.handsInUse() == 2 && c.inventory[1].equipped);
+}
+
 void scoreMethods()
 {
     auto rules = yh::Ruleset::modern();
@@ -363,6 +382,7 @@ void characterChoices()
 {
     files();
     scoreMethods();
+    hands();
     building();
     liveState();
     options();

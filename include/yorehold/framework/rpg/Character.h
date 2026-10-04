@@ -114,6 +114,12 @@ public:
     // Applies a rest's or a win's healing. Returns the HP gained; `detail` gets the roll ("2d10+4: ...").
     int recover(const Ruleset& rules, const Recovery& recovery, Random& random, std::string* detail = nullptr);
 
+    // Puts an item on, taking off whatever was in its slot. Held items ("mainHand", "offHand"...)
+    // share the character's hands: taking up something that needs more than are free puts the
+    // other held items away (a greatsword leaves no hand for a shield).
+    static constexpr int handCount = 2;
+    static bool held(const Item& item) { return item.slot.ends_with("Hand"); }
+    int handsInUse() const;
     bool equip(size_t inventoryIndex);
     void unequip(size_t inventoryIndex);
 

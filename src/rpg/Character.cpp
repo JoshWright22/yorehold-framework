@@ -214,6 +214,15 @@ int Character::recover(const Ruleset& rules, const Recovery& recovery, Random& r
     return hp - before;
 }
 
+int Character::handsInUse() const
+{
+    int hands = 0;
+    for (const Item& item : inventory)
+        if (item.equipped && held(item))
+            hands += std::max(0, item.hands);
+    return hands;
+}
+
 bool Character::equip(size_t index)
 {
     if (index >= inventory.size() || inventory[index].slot.empty() || inventory[index].equipped)
@@ -224,6 +233,11 @@ bool Character::equip(size_t index)
         if (inventory[i].equipped && inventory[i].slot == inventory[index].slot)
             unequip(i);
     }
+    // Then free enough hands, last-listed first (so a shield goes before a weapon).
+    if (held(inventory[index]))
+        for (size_t i = inventory.size(); i-- > 0 && handsInUse() + std::max(0, inventory[index].hands) > handCount;)
+            if (inventory[i].equipped && held(inventory[i]))
+                unequip(i);
     Item& item = inventory[index];
     item.equipped = true;
     for (Modifier m : item.modifiers)

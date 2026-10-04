@@ -361,7 +361,7 @@ Every effect step also accepts `ifFlag`: it only runs for subjects carrying that
 
 `Character::addModifier(id, modifier, rounds)` is the timed modifier on its own.
 
-`Character` includes inventory, equipment, resources, conditions, HP/temp HP, checks and saves. `Encounter` handles initiative, turns, action/movement budgets, attacks, damage and condition durations. Empty encounters and negative movement requests are rejected. Which actions are legal, and the UI flow around them, remain client responsibilities.
+`Character` includes inventory, equipment, resources, conditions, HP/temp HP, checks and saves. `equip` keeps one item per slot and two hands between the held slots (those ending in `Hand`): taking up an item whose `hands` aren't free puts other held items away, last-listed first. `Encounter` handles initiative, turns, action/movement budgets, attacks, damage and condition durations. Empty encounters and negative movement requests are rejected. Which actions are legal, and the UI flow around them, remain client responsibilities.
 
 ### Flanking and cover
 
