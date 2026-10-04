@@ -43,16 +43,21 @@ struct CharacterChoices
     int level() const { return static_cast<int>(levels.size()); }
 
     // Checks what can be checked without the compendium: a score for each of the ruleset's
-    // abilities and nothing else, in range, and at least one level.
+    // abilities and nothing else, in range, and at least one level. Point-buy scores must be
+    // bought within the budget and an array's values each used once; rolled and fixed scores
+    // only need to be in range.
     bool check(const Ruleset& rules, std::string* error = nullptr) const;
 
     std::string toJson() const;
     static std::optional<CharacterChoices> fromJson(std::string_view json, std::string* error = nullptr);
 };
 
-// A first-level character of `classId` with rolled scores: 4d6 keep 3 per ability (3d6 for
-// classic), in the ruleset's ability order.
+// A first-level character of `classId` with rolled scores (the ruleset's scoreMethods.roll per
+// ability, in the ruleset's ability order).
 CharacterChoices rollChoices(const Ruleset& rules, std::string name, std::string classId, Random& random);
+
+// What a set of scores costs under the ruleset's point buy; -1 if one of them can't be bought.
+int pointBuyCost(const Ruleset& rules, const std::map<std::string, int>& scores);
 
 // For sheets saved before choices existed: the scores on the sheet, every level in `classId`.
 CharacterChoices choicesFromSheet(const Ruleset& rules, const Character& sheet, std::string classId);

@@ -317,11 +317,52 @@ void levelTables()
     CHECK(both && both->resources.at("slots-1").max == 4 && both->resources.at("recovery").max == 2);
 }
 
+void scoreMethods()
+{
+    auto rules = yh::Ruleset::modern();
+    std::string error;
+    auto bought = ana(rules); // five 10s and a 14: 5 * 2 + 7 points
+    bought.scoreMethod = "pointBuy";
+    CHECK(yh::pointBuyCost(rules, bought.scores) == 17 && bought.check(rules, &error));
+    bought.scores["str"] = 15; bought.scores["dex"] = 15; // 17 - 4 + 18
+    CHECK(yh::pointBuyCost(rules, bought.scores) == 31 && !bought.check(rules, &error) && error == "scores: cost 31 points, the budget is 27");
+    bought.scores["dex"] = 16;
+    CHECK(yh::pointBuyCost(rules, bought.scores) == -1 && !bought.check(rules, &error) && error == "scores: point buy only buys scores 8 to 15");
+
+    auto arrayed = ana(rules);
+    arrayed.scoreMethod = "array";
+    CHECK(!arrayed.check(rules, &error) && error == "scores: the standard array uses each of its values once");
+    const int values[] = {8, 15, 13, 14, 10, 12};
+    for (size_t i = 0; i < rules.abilities.size(); i++)
+        arrayed.scores[rules.abilities[i].id] = values[i];
+    CHECK(arrayed.check(rules, &error));
+
+    // The numbers are data and survive the trip through JSON.
+    rules.scoreMethods.roll = "3d6";
+    rules.scoreMethods.standardArray = {14, 13, 12, 11, 10, 9};
+    rules.scoreMethods.pointBudget = 20;
+    rules.scoreMethods.pointCosts = {{7, 0}, {12, 5}};
+    const auto back = yh::Ruleset::fromJson(rules.toJson(), &error);
+    CHECK(back && back->scoreMethods.roll == "3d6" && back->scoreMethods.standardArray == rules.scoreMethods.standardArray
+        && back->scoreMethods.pointBudget == 20 && back->scoreMethods.pointCosts == rules.scoreMethods.pointCosts);
+    auto j = nlohmann::json::parse(rules.toJson());
+    j["scoreMethods"]["standardArray"] = {15, 40};
+    CHECK(!yh::Ruleset::fromJson(j.dump(), &error) && error.find("scoreMethods") != std::string::npos);
+    j["scoreMethods"]["standardArray"] = {15, 14};
+    const auto short_ = yh::Ruleset::fromJson(j.dump(), &error);
+    arrayed.scores = {{"str", 15}, {"dex", 14}, {"con", 10}, {"int", 10}, {"wis", 10}, {"cha", 10}};
+    CHECK(short_ && !arrayed.check(*short_, &error));
+    j = nlohmann::json::parse(rules.toJson());
+    j["scoreMethods"]["roll"] = "lots";
+    CHECK(!yh::Ruleset::fromJson(j.dump(), &error));
+}
+
 }
 
 void characterChoices()
 {
     files();
+    scoreMethods();
     building();
     liveState();
     options();

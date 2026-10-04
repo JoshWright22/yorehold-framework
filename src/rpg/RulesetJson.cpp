@@ -1,5 +1,7 @@
 #include "yorehold/framework/rpg/Ruleset.h"
 
+#include "yorehold/framework/rpg/Dice.h"
+
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -54,6 +56,10 @@ std::string Ruleset::toJson() const
         {"actionsPerTurn", actionsPerTurn}, {"bonusActions", bonusActions}, {"strikeCostsHands", strikeCostsHands}, {"sharedTurns", sharedTurns},
         {"feetPerSquare", feetPerSquare}, {"carryPerStrength", carryPerStrength},
         {"magicItemLimit", magicItemLimit}, {"passiveBase", passiveBase}};
+    j["scoreMethods"] = {{"roll", scoreMethods.roll}, {"standardArray", scoreMethods.standardArray}, {"pointBudget", scoreMethods.pointBudget},
+        {"pointCosts", J::object()}};
+    for (const auto& [score, cost] : scoreMethods.pointCosts)
+        j["scoreMethods"]["pointCosts"][std::to_string(score)] = cost;
     j["proficiencyRanks"] = J::array();
     for (const auto& rank : proficiencyRanks)
         j["proficiencyRanks"].push_back({{"id", rank.id}, {"name", rank.name}, {"bonus", rank.bonus}, {"addsLevel", rank.addsLevel}});
@@ -166,6 +172,29 @@ std::optional<Ruleset> Ruleset::fromJson(std::string_view json, std::string* err
         }
         if (r.abilities.empty() || (!r.armorClassAbility.empty() && !r.ability(r.armorClassAbility))
             || (!r.initiativeAbility.empty() && !r.ability(r.initiativeAbility))) throw std::invalid_argument("Unknown derived-stat ability");
+        if (j.contains("scoreMethods"))
+        {
+            const auto& m = j.at("scoreMethods");
+            if (!m.is_object()) throw std::invalid_argument("scoreMethods must be an object");
+            auto& methods = r.scoreMethods;
+            methods.roll = m.value("roll", methods.roll);
+            methods.standardArray = m.value("standardArray", methods.standardArray);
+            methods.pointBudget = m.value("pointBudget", methods.pointBudget);
+            if (m.contains("pointCosts"))
+            {
+                if (!m.at("pointCosts").is_object()) throw std::invalid_argument("scoreMethods.pointCosts maps a score to its cost");
+                methods.pointCosts.clear();
+                for (const auto& [score, cost] : m.at("pointCosts").items())
+                    methods.pointCosts[std::stoi(score)] = cost.get<int>();
+            }
+            // Scores as a character's choices hold them. A ruleset whose array doesn't fit its
+            // abilities still loads; characters just can't use the array.
+            auto inRange = [](int score) { return score >= 1 && score <= 30; };
+            if (!DiceExpression::parse(methods.roll) || methods.pointBudget < 0 || methods.pointBudget > 1000
+                || methods.standardArray.size() > 100 || !std::all_of(methods.standardArray.begin(), methods.standardArray.end(), inRange)
+                || std::any_of(methods.pointCosts.begin(), methods.pointCosts.end(), [&](const auto& c) { return !inRange(c.first) || c.second < 0 || c.second > 1000; }))
+                throw std::invalid_argument("Invalid scoreMethods: a dice roll, and array values and bought scores from 1 to 30");
+        }
         ids.clear();
         for (const auto& s : j.value("skills", nlohmann::json::array()))
         {

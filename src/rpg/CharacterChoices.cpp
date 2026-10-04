@@ -135,7 +135,41 @@ bool CharacterChoices::check(const Ruleset& rules, std::string* error) const
     for (const auto& [ability, score] : scores)
         if (std::none_of(rules.abilities.begin(), rules.abilities.end(), [&](const AbilityDefinition& a) { return a.id == ability; }))
             return problem("scores." + ability + ": not an ability of this ruleset");
+    if (scoreMethod == "pointBuy")
+    {
+        const int cost = pointBuyCost(rules, scores);
+        if (rules.scoreMethods.pointCosts.empty())
+            return problem("scoreMethod: this ruleset has no point buy");
+        if (cost < 0)
+            return problem("scores: point buy only buys scores " + std::to_string(rules.scoreMethods.pointCosts.begin()->first) + " to "
+                + std::to_string(rules.scoreMethods.pointCosts.rbegin()->first));
+        if (cost > rules.scoreMethods.pointBudget)
+            return problem("scores: cost " + std::to_string(cost) + " points, the budget is " + std::to_string(rules.scoreMethods.pointBudget));
+    }
+    if (scoreMethod == "array")
+    {
+        std::vector<int> given, wanted = rules.scoreMethods.standardArray;
+        for (const auto& [ability, score] : scores)
+            given.push_back(score);
+        std::sort(given.begin(), given.end());
+        std::sort(wanted.begin(), wanted.end());
+        if (given != wanted)
+            return problem("scores: the standard array uses each of its values once");
+    }
     return true;
+}
+
+int pointBuyCost(const Ruleset& rules, const std::map<std::string, int>& scores)
+{
+    int total = 0;
+    for (const auto& [ability, score] : scores)
+    {
+        const auto cost = rules.scoreMethods.pointCosts.find(score);
+        if (cost == rules.scoreMethods.pointCosts.end())
+            return -1;
+        total += cost->second;
+    }
+    return total;
 }
 
 std::string CharacterChoices::toJson() const
@@ -181,9 +215,8 @@ CharacterChoices rollChoices(const Ruleset& rules, std::string name, std::string
     c.name = std::move(name);
     c.scoreMethod = "roll";
     c.ruleset = rules.id;
-    const char* abilityDice = rules.modifierTable == ModifierTable::Classic ? "3d6" : "4d6kh3";
     for (const AbilityDefinition& ability : rules.abilities)
-        c.scores[ability.id] = roll(abilityDice, random).total;
+        c.scores[ability.id] = roll(rules.scoreMethods.roll, random).total;
     c.levels.push_back({std::move(classId), {}});
     return c;
 }

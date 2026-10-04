@@ -148,6 +148,7 @@ Ruleset Ruleset::classic()
     r.conditions = commonConditions();
     r.modifierTable = ModifierTable::Classic;
     r.scoreMax = 18;
+    r.scoreMethods.roll = "3d6";
     r.xpForLevel = {1500, 3500, 7500, 15000, 30000, 60000, 110000, 220000, 330000}; // placeholder curve, tune later
     // Old-school: slow natural healing, one hit die per rest, nobody gets back up by themselves.
     r.rests = {{"rest", "Rest", {Recovery::Kind::HitDice, 0.5f, 1, false}, 0}};

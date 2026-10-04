@@ -192,9 +192,22 @@ is rebuilt from it and the ruleset whenever it is loaded, so a rules change show
 | `xp`, `ruleset`, `notes` | Experience, the ruleset id the character was made under, and the player's notes. |
 
 Unknown fields and a `version` newer than 1 are refused with the field named. `rollChoices(rules,
-name, classId, random)` rolls a first-level character (4d6 keep 3 per ability, 3d6 for the
-classic table); `choicesFromSheet(rules, sheet, classId)` reads the scores and level back out of a
+name, classId, random)` rolls a first-level character (the ruleset's `scoreMethods.roll` per
+ability); `choicesFromSheet(rules, sheet, classId)` reads the scores and level back out of a
 sheet saved before choices existed (method `fixed`, every level in that class).
+
+The ruleset's `scoreMethods` holds the numbers for each method; all are optional:
+
+```json
+"scoreMethods": { "roll": "4d6kh3", "standardArray": [15, 14, 13, 12, 10, 8], "pointBudget": 27,
+                  "pointCosts": { "8": 0, "9": 1, "10": 2, "11": 3, "12": 4, "13": 5, "14": 7, "15": 9 } }
+```
+
+`check(rules)` holds a `pointBuy` character to scores listed in `pointCosts` costing at most
+`pointBudget` in total (`pointBuyCost(rules, scores)` adds them up, -1 for a score that can't be
+bought), and an `array` character to the standard array's values, each used once (so an array
+that doesn't have one value per ability can't be used). Array values and bought scores are 1 to
+30. The classic preset rolls 3d6.
 
 `Compendium::build(rules, choices, &error)` makes the sheet: the scores, the first class's hit
 die, speed, darkvision, ranks, DC ability, resources and gear, and HP for every level (the first

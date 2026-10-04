@@ -2,6 +2,7 @@
 
 #include "yorehold/framework/rpg/Stats.h"
 
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -127,6 +128,16 @@ struct DeathRules
     std::string downedCondition, dyingCondition, stableCondition, deadCondition;
 };
 
+// The ways a new character's ability scores can be set (CharacterChoices::scoreMethod).
+struct ScoreMethods
+{
+    std::string roll = "4d6kh3";                            // rolled once per ability, in order
+    std::vector<int> standardArray{15, 14, 13, 12, 10, 8}; // one value per ability, each used once
+    int pointBudget = 27;
+    // Score -> what it costs. Only these scores can be bought.
+    std::map<int, int> pointCosts{{8, 0}, {9, 1}, {10, 2}, {11, 3}, {12, 4}, {13, 5}, {14, 7}, {15, 9}};
+};
+
 struct Ruleset
 {
     std::string id;
@@ -137,6 +148,7 @@ struct Ruleset
     ModifierTable modifierTable = ModifierTable::D20;
     int scoreMin = 3;
     int scoreMax = 20;
+    ScoreMethods scoreMethods;
     int baseArmorClass = 10;
     std::string armorClassAbility = "dex"; // added to AC (empty = none)
     std::string initiativeAbility = "dex";
