@@ -33,6 +33,7 @@ struct Token
     int owner = 0;       // player who controls it
     bool selected = false;
     std::vector<Vec2> path; // remaining waypoints while walking
+    float pace = 1.0f;   // this token's share of settings.walkCellsPerSecond (0.5 = half speed)
     int floor = 0;
     // Virtual path of any image file (PNG, JPEG, WebP, ...). Empty draws a coloured disc with the initial.
     std::string image;

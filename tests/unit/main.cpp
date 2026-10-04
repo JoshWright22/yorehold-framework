@@ -372,6 +372,18 @@ void tokensAndParty()
     CHECK(!blocked && grid.cellAt(line.tokens[0].position) == yh::Cell{0, 1});
     CHECK(grid.cellAt(line.tokens[1].position) != grid.cellAt(line.tokens[2].position));
     CHECK(grid.distance(grid.cellAt(line.tokens[0].position), grid.cellAt(line.tokens[1].position)) <= 2);
+
+    // A token's own pace scales the shared walking speed.
+    yh::TokenController race;
+    race.tokens.resize(2);
+    race.tokens[1].owner = 1; // strangers, so neither makes way for the other
+    race.tokens[0].position = {5, 5};
+    race.tokens[1].position = {5, 25};
+    race.tokens[0].path = {{195, 5}};
+    race.tokens[1].path = {{195, 25}};
+    race.tokens[1].pace = 0.5f;
+    race.update(input, camera, grid, passable, 1);
+    CHECK(std::fabs(race.tokens[0].position.x - 55) < 0.01f && std::fabs(race.tokens[1].position.x - 30) < 0.01f);
 }
 
 void inputFilesAndTheme()

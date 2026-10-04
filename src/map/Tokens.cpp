@@ -381,7 +381,7 @@ void TokenController::walk(double deltaSeconds, const Grid& grid)
     for (Token& token : tokens)
     {
         if (settings.inCombat && settings.activeTurn != static_cast<size_t>(&token - tokens.data())) continue;
-        float step = settings.walkCellsPerSecond * grid.size() * static_cast<float>(deltaSeconds);
+        float step = settings.walkCellsPerSecond * std::max(token.pace, 0.0f) * grid.size() * static_cast<float>(deltaSeconds);
         while (step > 0 && !token.path.empty())
         {
             const Vec2 toNext = token.path.front() - token.position;
