@@ -1469,6 +1469,7 @@ int main()
         {"Quests", regression::quests},
         {"Conditions", regression::conditions},
         {"Effects", regression::effects},
+        {"Actions", regression::actions},
         {"Camera controls", regression::cameraControls},
         {"Cutscenes", regression::cutscenes},
         {"Tweens", tweens},

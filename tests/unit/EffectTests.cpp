@@ -1,12 +1,15 @@
 #include "Checks.h"
 #include "EffectTests.h"
 
+#include <yorehold/framework/assets/FileSystem.h>
+#include <yorehold/framework/rpg/Action.h>
 #include <yorehold/framework/rpg/Combat.h>
-#include <yorehold/framework/rpg/Effect.h>
 
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -552,6 +555,117 @@ void effects()
     stepKinds(*rules);
     rolls(*rules);
     savesAndScaling(*rules);
+}
+
+void actions()
+{
+    namespace fs = std::filesystem;
+    std::string error;
+    const std::optional<yh::Ruleset> parsedRules = yh::Ruleset::fromJson(authored, &error);
+    CHECK(parsedRules && error.empty());
+    if (!parsedRules)
+        return;
+    yh::Ruleset rules = *parsedRules;
+    rules.actionsPerTurn = 2;
+
+    // One file: cost, requirements, targeting and effects.
+    const auto trip = yh::ActionDefinition::fromJson(R"({"id":"trip","name":"Trip","description":"Knock it down.","order":30,"cost":2,
+        "requires":{"flags":["armed"],"without":["cantAct"],"resources":{"grit":1}},
+        "target":{"kind":"creature","side":"any","range":2},"log":"{name} sweeps low",
+        "save":{"ability":"dex","dc":12},
+        "effects":[{"do":"condition","id":"shaken","onSave":"none"}]})", &error);
+    CHECK(trip && error.empty());
+    if (!trip)
+        return;
+    CHECK(trip->name == "Trip" && trip->order == 30 && trip->cost == 2 && !trip->costsHands && !trip->endsTurn && trip->general);
+    CHECK(trip->needsFlags == std::vector<std::string>{"armed"} && trip->barredBy == std::vector<std::string>{"cantAct"}
+        && trip->needsResources.size() == 1 && trip->needsResources[0].second == 1);
+    CHECK(trip->target == yh::ActionDefinition::Target::Creature && trip->side == yh::ActionDefinition::Side::Any && trip->range == 2
+        && trip->log == "{name} sweeps low" && trip->effect.steps.size() == 1 && trip->effect.save.dc == 12 && trip->effect.check(rules));
+    const auto again = yh::ActionDefinition::fromJson(trip->json);
+    CHECK(again && again->json == trip->json);
+    const auto bare = yh::ActionDefinition::fromJson(R"({"id":"wait"})");
+    CHECK(bare && bare->name == "wait" && bare->cost == 1 && bare->target == yh::ActionDefinition::Target::Self && bare->effect.empty() && bare->general);
+
+    auto refused = [&](const char* json, const char* field) {
+        return !yh::ActionDefinition::fromJson(json, &error) && error.find(field) != std::string::npos;
+    };
+    CHECK(refused(R"({"name":"No id"})", "id"));
+    CHECK(refused(R"({"id":"x","cost":"lots"})", "cost") && refused(R"({"id":"x","cost":11})", "cost"));
+    CHECK(refused(R"({"id":"x","price":1})", "price"));
+    CHECK(refused(R"({"id":"x","target":{"kind":"cone"}})", "target.kind"));
+    CHECK(refused(R"({"id":"x","target":{"kind":"creature","side":"both"}})", "target.side"));
+    CHECK(refused(R"({"id":"x","target":{"kind":"creature","range":0}})", "target.range"));
+    CHECK(refused(R"({"id":"x","target":{"kind":"self","range":3}})", "target"));
+    CHECK(refused(R"({"id":"x","requires":{"flags":"armed"}})", "requires.flags"));
+    CHECK(refused(R"({"id":"x","requires":{"resources":{"grit":0}}})", "requires.resources.grit"));
+    CHECK(refused(R"({"id":"x","requires":{"mood":"good"}})", "requires.mood"));
+    CHECK(refused(R"({"id":"x","effects":[{"do":"heal","dice":1},{"do":"explode"}]})", "effects[1].do"));
+    CHECK(refused(R"({"id":"x","endsTurn":"yes"})", "endsTurn"));
+
+    // What it costs and whether a creature may: hands of the weapon in use, flags and resources.
+    yh::Character c = plain("Ana");
+    const auto swing = yh::ActionDefinition::fromJson(R"({"id":"swing","cost":"hands"})");
+    CHECK(swing && swing->costsHands && swing->costFor(c, rules) == 1); // unarmed
+    yh::Item axe;
+    axe.id = "axe";
+    axe.slot = "mainHand";
+    axe.hands = 2;
+    c.inventory.push_back(axe);
+    c.equip(0);
+    CHECK(swing->costFor(c, rules) == 2 && trip->costFor(c, rules) == 2);
+    c.inventory[0].hands = 5;
+    CHECK(swing->costFor(c, rules) == 2); // never more than a turn has
+    std::string why;
+    yh::Ruleset flagged = rules;
+    flagged.conditions.push_back(*yh::ConditionDefinition::fromJson(R"({"id":"ready","flags":["armed"]})"));
+    flagged.conditions.push_back(*yh::ConditionDefinition::fromJson(R"({"id":"stunned","flags":["cantAct"]})"));
+    CHECK(!trip->meets(c, flagged, &why) && why.find("armed") != std::string::npos);
+    c.addCondition(flagged, "ready");
+    CHECK(!trip->meets(c, flagged, &why) && why.find("grit") != std::string::npos);
+    c.resources["grit"] = {1, 1};
+    CHECK(trip->meets(c, flagged, &why) && why.empty());
+    c.addCondition(flagged, "stunned");
+    CHECK(!trip->meets(c, flagged, &why) && why.find("cantAct") != std::string::npos);
+    CHECK(bare->meets(c, flagged));
+
+    // The three every fight has, costing what the ruleset says a strike costs.
+    std::vector<yh::ActionDefinition> basic = yh::basicActions(rules);
+    CHECK(basic.size() == 3 && basic[0].id == "strike" && basic[1].id == "stride" && basic[2].id == "end-turn");
+    CHECK(!basic[0].costsHands && basic[0].cost == 1 && basic[0].target == yh::ActionDefinition::Target::Creature && basic[0].range == 1
+        && basic[1].cost == 1 && basic[1].log == "{name} dashes" && basic[2].cost == 0 && basic[2].endsTurn);
+    CHECK(basic[0].effect.check(rules) && basic[1].effect.check(rules));
+    rules.strikeCostsHands = true;
+    CHECK(yh::basicActions(rules)[0].costsHands);
+    CHECK(yh::findAction(basic, "stride") == &basic[1] && !yh::findAction(basic, "fly"));
+
+    // A folder of them, one file per action, over what is already there.
+    const fs::path root = fs::temp_directory_path() / "yorehold-action-test";
+    fs::remove_all(root);
+    auto write = [&](const char* file, const char* text) {
+        fs::create_directories((root / file).parent_path());
+        std::ofstream(root / file, std::ios::binary) << text;
+    };
+    write("good/actions/stride.json", R"({"id":"stride","name":"Stride","order":5,"cost":1})");
+    write("good/actions/shout.json", R"({"id":"shout","name":"Shout","order":7,"cost":0,"general":false,"effects":[{"do":"condition","id":"shaken","target":"enemies"}]})");
+    write("good/actions/notes.txt", "not an action");
+    write("misnamed/actions/shout.json", R"({"id":"yell"})");
+    write("broken/actions/shout.json", R"({"id":"shout","effects":[{"do":"sing"}]})");
+    write("dangling/actions/shout.json", R"({"id":"shout","effects":[{"do":"condition","id":"deafened"}]})");
+    yh::FileSystem disk;
+    CHECK(disk.mountFolder(root.string(), "test"));
+    std::vector<yh::ActionDefinition> loaded = basic;
+    CHECK(yh::loadActions(disk, "good/actions", rules, loaded, &error) && error.empty());
+    CHECK(loaded.size() == 4 && loaded[0].id == "stride" && loaded[0].name == "Stride" && loaded[1].id == "shout" && !loaded[1].general
+        && loaded[2].id == "strike" && loaded[3].id == "end-turn");
+    CHECK(!yh::loadActions(disk, "misnamed/actions", rules, loaded, &error) && error.find("misnamed/actions/shout.json") != std::string::npos);
+    CHECK(!yh::loadActions(disk, "broken/actions", rules, loaded, &error) && error.find("broken/actions/shout.json") != std::string::npos
+        && error.find("effects[0].do") != std::string::npos && error.find("sing") != std::string::npos);
+    CHECK(!yh::loadActions(disk, "dangling/actions", rules, loaded, &error) && error.find("deafened") != std::string::npos);
+    CHECK(loaded.size() == 4 && loaded[1].name == "Shout"); // a failed load changes nothing
+    CHECK(yh::loadActions(disk, "missing/actions", rules, loaded) && loaded.size() == 4); // no folder, no more actions
+    disk.unmount("test");
+    fs::remove_all(root);
 }
 
 }

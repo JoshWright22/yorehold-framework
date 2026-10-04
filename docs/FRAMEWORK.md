@@ -168,6 +168,24 @@ A `save` beside the steps is made once by each creature that a step asks it of (
 
 An unknown step, an unknown or misspelt field, a bad name or a number out of range fails `fromJson`, and the message starts with the field: `effects[1].steps[0].dice: ...`. `check(rules)` then checks what only a ruleset can tell: the conditions, abilities and skills named exist, and a step with `onSave` has a save to answer to. Steps nest up to six deep.
 
+### Actions
+
+An `ActionDefinition` is something a creature can do on its turn: one JSON object, usually a file of its own. `loadActions(files, folder, rules, actions)` adds every `<id>.json` in a folder, replacing actions with the same id, sorts them by `order` and changes nothing if any file fails (the error names it). `basicActions(rules)` gives the three every turn-based fight has, for rulesets with no files: `strike`, `stride` and `end-turn`.
+
+| Field | Meaning |
+|---|---|
+| `id`, `name`, `description` | Only `id` is required; a file's name must match it. |
+| `order` | Where it comes in a list, lowest first. |
+| `cost` | Actions it takes, 0 to 10 (default 1), or `"hands"`: one per hand the weapon in use needs. `costFor(character, rules)` works it out. |
+| `endsTurn` | The turn is over once it is done. |
+| `general` | `true` (the default): every creature has it. Otherwise something has to grant it. |
+| `requires` | `flags` the doer must have, flags it must be `without`, and `resources` it must hold at least this much of. `meets(character, rules, &why)` checks them. |
+| `target` | `kind` `self` (the default) or `creature`; for a creature, `side` (`enemy`, the default, `ally` or `any`) and `range` in squares (1 = next to it). |
+| `log` | A line for the game's log; `{name}` is whoever does it. |
+| `effects`, `save` | What it does, as an `Effect`. The effect is checked against the ruleset when the folder is loaded. |
+
+Paying for the action, checking the target and running the effect are the game's: the framework supplies the definition and the checks on the doer.
+
 `run(host, context)` carries the steps out and returns what happened as a list of `EffectEvent`s (rolls with their dice, damage, healing, conditions added, removed or ended...), which the game turns into its log and its floating numbers. `EffectContext` names the ruleset and the dice, who does it, who it was aimed at, its name, the event if any, and the level, slot and DC to use. `EffectHost` is everything an effect needs from the game: `sheet(who)` and `group("area" | "allies" | "enemies", context)` must be supplied; `damage` and `resource` have defaults that work on the sheet (override `damage` for resistances); `move`, `summon`, `light`, `surface`, `flag` and `choose` do nothing until the game supplies them, and a step whose hook returns false reports nothing. Creatures are the host's own numbers (`EffectActor`); one without a sheet is skipped. An attack run with an encounter's dice rolls exactly what `Encounter::attack` would.
 
 `Character::addModifier(id, modifier, rounds)` is the timed modifier on its own.
