@@ -195,6 +195,12 @@ Every effect step also accepts `ifFlag`: it only runs for subjects carrying that
 
 `Character` includes inventory, equipment, resources, conditions, HP/temp HP, checks and saves. `Encounter` handles initiative, turns, action/movement budgets, attacks, damage and condition durations. Empty encounters and negative movement requests are rejected. Which actions are legal, and the UI flow around them, remain client responsibilities.
 
+### Movement reactions
+
+`ReactionDefinition` names a movement trigger (`leavesReach` or `entersReach`) and an action, or uses `readied: true` to run the action a creature recorded. `matches(before, after, reach)` tests distances on each edge of a movement path. `loadReactions(files, folder, actions, reactions)` reads `<id>.json` files, checks action references, sorts by `order` then id, and changes nothing on an error.
+
+Fields: `id` (required, matching the file), `name` (defaults to id), `trigger` (required), either `action` or `readied: true`, `order` (default 0), and `promptSeconds` (0.1 to 30, default 2). A referenced action must not end the turn or ready another action. The host decides when to offer it and how to show a prompt. `Encounter::useReaction(index)` spends the creature's one reaction, regardless of the action's turn cost; down, withdrawn or `cantAct` creatures cannot react. The budget refreshes on its own turn.
+
 ## Text and languages
 
 `Strings` loads `lang/<locale>.json` from the `FileSystem`, so skins and chapters can add or override languages. Nested objects become dotted keys (`menu.start`). `load(files, "pt-BR")` layers the fallback (`en`), then `pt`, then `pt-BR`. Missing keys fall back the same way and finally show the key itself; `missing()` lists them for translators. `get(key, {{"name", "Ana"}})` fills `{name}` placeholders, and `{{`/`}}` are literal braces. `plural(key, count)` picks `zero/one/two/few/many/other` with simplified CLDR integer rules: English-style by default, French/Portuguese treat 0 as one, plus Slavic few/many, Czech/Slovak, Arabic, and no plurals for CJK/Thai/Vietnamese/Indonesian. `preferredLocales()` reads the OS languages.

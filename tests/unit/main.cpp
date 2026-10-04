@@ -1470,6 +1470,7 @@ int main()
         {"Conditions", regression::conditions},
         {"Effects", regression::effects},
         {"Actions", regression::actions},
+        {"Reactions", regression::reactions},
         {"Camera controls", regression::cameraControls},
         {"Cutscenes", regression::cutscenes},
         {"Tweens", tweens},

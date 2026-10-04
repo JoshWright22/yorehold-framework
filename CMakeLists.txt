@@ -142,6 +142,7 @@ add_library(yorehold-framework
     src/net/Session.cpp
     src/net/Tcp.cpp
     src/rpg/Action.cpp
+    src/rpg/Reaction.cpp
     src/rpg/Character.cpp
     src/rpg/CharacterJson.cpp
     src/rpg/Combat.cpp

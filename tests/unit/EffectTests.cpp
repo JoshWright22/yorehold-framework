@@ -4,6 +4,7 @@
 #include <yorehold/framework/assets/FileSystem.h>
 #include <yorehold/framework/rpg/Action.h>
 #include <yorehold/framework/rpg/Combat.h>
+#include <yorehold/framework/rpg/Reaction.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -688,6 +689,49 @@ void actions()
     CHECK(yh::loadActions(disk, "missing/actions", rules, loaded) && loaded.size() == 4); // no folder, no more actions
     disk.unmount("test");
     fs::remove_all(root);
+}
+
+void reactions()
+{
+    namespace fs = std::filesystem;
+    std::string error;
+    const auto leave = yh::ReactionDefinition::fromJson(R"({"id":"leave","trigger":"leavesReach","action":"strike","promptSeconds":2})", &error);
+    const auto enter = yh::ReactionDefinition::fromJson(R"({"id":"enter","trigger":"entersReach","readied":true})", &error);
+    CHECK(leave && enter && error.empty());
+    if (!leave || !enter) return;
+    CHECK(leave->matches(1, 2, 1) && !leave->matches(0, 1, 1) && !leave->matches(2, 3, 1) && !leave->matches(1, 1, 1));
+    CHECK(enter->matches(2, 1, 1) && !enter->matches(1, 0, 1) && !enter->matches(2, 3, 1));
+    CHECK(!yh::ReactionDefinition::fromJson(R"({"id":"x","trigger":"any","action":"strike"})", &error) && error.find("trigger") != std::string::npos);
+    CHECK(!yh::ReactionDefinition::fromJson(R"({"id":"x","trigger":"leavesReach"})", &error) && error.find("action") != std::string::npos);
+    CHECK(!yh::ReactionDefinition::fromJson(R"({"id":"x","trigger":"leavesReach","action":"strike","readied":true})", &error));
+    CHECK(!yh::ReactionDefinition::fromJson(R"({"id":"x","trigger":"leavesReach","action":"strike","promptSeconds":0})", &error));
+    CHECK(!yh::ReactionDefinition::fromJson(R"({"id":"x","trigger":"leavesReach","action":"strike","unknown":0})", &error));
+    const fs::path root = fs::temp_directory_path() / "yorehold-reaction-test";
+    fs::remove_all(root);
+    fs::create_directories(root / "good");
+    fs::create_directories(root / "bad");
+    std::ofstream(root / "good/leave.json") << leave->json;
+    std::ofstream(root / "good/enter.json") << enter->json;
+    std::ofstream(root / "bad/dangling.json") << R"({"id":"dangling","trigger":"leavesReach","action":"missing"})";
+    yh::FileSystem files;
+    CHECK(files.mountFolder(root.string(), "test"));
+    const auto actions = yh::basicActions(yh::Ruleset::modern());
+    std::vector<yh::ReactionDefinition> loaded;
+    CHECK(yh::loadReactions(files, "good", actions, loaded, &error) && loaded.size() == 2 && loaded[0].id == "enter");
+    CHECK(!yh::loadReactions(files, "bad", actions, loaded, &error) && error.find("dangling.json") != std::string::npos
+        && error.find("action") != std::string::npos && loaded.size() == 2);
+    files.unmount("test");
+    fs::remove_all(root);
+
+    yh::Ruleset rules = yh::Ruleset::modern();
+    rules.conditions.push_back(*yh::ConditionDefinition::fromJson(R"({"id":"stunned","flags":["cantAct"]})"));
+    yh::Character one = plain("One"), two = plain("Two");
+    yh::Encounter fight(rules, 5);
+    fight.add(one, 0);
+    fight.add(two, 1);
+    fight.start();
+    fight.current().character->addCondition(rules, "stunned");
+    CHECK(!fight.useReaction(fight.currentIndex()));
 }
 
 }

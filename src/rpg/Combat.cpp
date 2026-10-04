@@ -223,7 +223,8 @@ bool Encounter::spendActions(int count)
 
 bool Encounter::useReaction(size_t index)
 {
-    if (!started_ || finished() || index >= order_.size() || !order_[index].standing() || !order_[index].budget.reaction)
+    if (!started_ || finished() || index >= order_.size() || !order_[index].standing() || !order_[index].budget.reaction
+        || order_[index].character->hasFlag(rules_, "cantAct"))
         return false;
     order_[index].budget.reaction = false;
     return true;
