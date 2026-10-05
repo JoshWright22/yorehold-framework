@@ -14,6 +14,7 @@
 #include "CutsceneTests.h"
 #include "StashTests.h"
 #include "CompanionTests.h"
+#include "FormTests.h"
 
 #include <yorehold/framework/animation/SpriteSheet.h>
 #include <yorehold/framework/animation/Tween.h>
@@ -1513,6 +1514,7 @@ int main()
         {"Cutscenes", regression::cutscenes},
         {"Stash and supplies", regression::stashAndSupplies},
         {"Companions", regression::companions},
+        {"Forms", regression::forms},
         {"Tweens", tweens},
         {"Particles", particles},
         {"Visibility/fog", visibilityAndFog},

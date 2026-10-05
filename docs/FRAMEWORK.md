@@ -527,11 +527,27 @@ quantities, prices and multipliers. The caller owns distance, turn and player pe
 
 `RichText::parse` understands `[color=#rrggbb]`/`[color=#rrggbbaa]`/`[color=name]` (from a palette such as the theme's accent/good/bad), `[wave]`, `[shake]`, `[rainbow]` and `[icon=name]`. `[[` is a literal bracket. Unknown or badly nested tags show as typed. Escape player-typed text with `RichText::escape` so chat and names can't inject tags. `layout(font, maxWidth)` wraps at spaces across style changes and keeps kerning inside words. `draw(renderer, position, baseColour, time, iconDrawer)` animates effects from the clock you pass, and icons draw through a callback (usually `Atlas::draw`). The debug font works when `font` is null.
 
-## Saves and undo
+## Saves, undo and forms
 
 `SaveFormat("yorehold.save", 3)` wraps client data in `{"format", "version", "framework", "data"}`. Register `migrate(from, step)` for every older version. Steps edit `nlohmann::json` in place and throw to reject a save. `read` refuses other formats and newer saves, runs framework migrations first and then client steps up to the current version, and changes nothing if any step fails. `frameworkSaveVersion` tracks the shape of the framework's own snapshots. `writeFile` writes through a temporary file and keeps the previous save as `.bak`; `readFile` falls back to the backup when the main file is missing or corrupt. `writeFileAtomically` does the same for any text.
 
 `History` records undo/redo as pairs of callbacks that capture their old and new values. `perform` applies and records an edit; `record` stores one that is already applied. `beginGroup`/`endGroup` make one step out of many edits. A merge key joins consecutive edits (one brush stroke, one slider drag) until `breakMerge()`. Edits are refused while undoing or redoing. `dirty()`/`markSaved()` track unsaved changes, including after undoing past a save and then branching. The default limit is 200 steps.
+
+`FormSchema` (`editor/Form.h`) describes the fields of one kind of definition file so an editor can build its form from data instead of a screen per kind. It reads from JSON:
+
+```json
+{ "id": "item", "label": "Items", "folder": "items", "idKey": "id",
+  "fields": [
+    { "key": "name", "required": true, "default": "New item" },
+    { "key": "value", "type": "integer", "min": 0, "label": "Value (cp)", "help": "in copper" },
+    { "key": "slot", "type": "choice", "options": ["", "mainHand", "armor"] },
+    { "key": "attackAbility", "type": "choice", "optionsFrom": "abilities" },
+    { "key": "use", "type": "json" } ] }
+```
+
+Field types are `text` (the default), `integer`, `number`, `flag`, `choice` (one name), `list` (names, typed `a, b, c`) and `json` (anything, typed as JSON). `min` and `max` bound numbers. `options` lists the names a choice or list offers and `optionsFrom` names a list the caller fills in (`FormOptions`, such as the ids of every item). `default` is what a new entry starts with; a required field without one starts empty. `idKey` is the key the file name follows (empty: the file name is the only id). Unknown keys on a field are refused; other keys on the schema itself are left for the caller.
+
+`FormField::text` is what a text box shows for a value, `parse` turns typed text back into a value (null means leave the key out, nullopt means it can't be this field's value, with the reason), and `problem` says what is wrong with a value a file has. A name that isn't among the offered choices only sets `unknown`, since the lists may not know everything the game will; so does a choice written as something other than a name (a long form such as an object), which is left to the file's own reader. `FormSchema::blank` makes a new entry, `problems` checks every field and `unlisted` names the keys no field covers, which editors keep as they were. Values are `nlohmann::ordered_json`, so files keep their key order.
 
 ## Multiplayer sessions
 

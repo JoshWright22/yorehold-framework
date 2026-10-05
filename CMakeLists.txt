@@ -114,6 +114,7 @@ add_library(yorehold-framework
     src/assets/Skin.cpp
     src/assets/FileSystem.cpp
     src/debug/Profiler.cpp
+    src/editor/Form.cpp
     src/editor/History.cpp
     src/graphics/Atlas.cpp
     src/graphics/Font.cpp
@@ -233,6 +234,7 @@ if(YOREHOLD_FRAMEWORK_UNIT_TESTS AND NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQ
         tests/unit/CutsceneTests.cpp
         tests/unit/StashTests.cpp
         tests/unit/CompanionTests.cpp
+        tests/unit/FormTests.cpp
     )
     target_link_libraries(yorehold-framework-unit-tests PRIVATE yorehold::framework webp)
     target_include_directories(yorehold-framework-unit-tests PRIVATE ${stb_dir})

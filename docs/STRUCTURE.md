@@ -13,7 +13,7 @@ yorehold-framework/
     assets/    FileSystem, Assets, Skin
     audio/     Sound, Audio
     debug/     Profiler (F3 values and scope timers)
-    editor/    History (undo/redo)
+    editor/    History (undo/redo), Form (field lists for definition files)
     graphics/  Renderer, Camera, Font, Image (decoding/resizing/cropping/slicing), Atlas (+ RectPacker), Particles, Lighting, Types
     input/     Input (actions + bindings, gamepads), ControlScheme (Foundry/BG3 presets)
     map/       Grid, TileMap, Pathfinding, Navigation, Tokens, CameraControls, Objects, Regions, FogOfWar, LightLevels, Templates (+ ruler)
