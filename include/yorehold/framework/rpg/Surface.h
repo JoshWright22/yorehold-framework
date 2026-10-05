@@ -9,7 +9,7 @@ namespace yh
 {
 
 class FileSystem;
-class Ruleset;
+struct Ruleset;
 
 // A named effect area like Fire or Grease: what it does to creatures in it, how long it lasts,
 // and what ends it. One JSON object each, in a ruleset's `surfaces` list or a file of its own
