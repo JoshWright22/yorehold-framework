@@ -58,6 +58,8 @@ Item itemFrom(const json& j)
     item.value = j.value("value", 0);
     item.quantity = j.value("quantity", 1);
     item.magic = j.value("magic", false);
+    item.supplies = j.value("supplies", 0);
+    if (item.supplies < 0 || item.supplies > 10000) throw std::invalid_argument("Item supplies are 0 to 10000");
     if (j.contains("use"))
     {
         auto use = j.at("use");
@@ -253,6 +255,7 @@ std::string Compendium::itemToJson(const Item& item)
     json j{{"id", item.id}, {"name", item.name}, {"slot", item.slot}, {"damage", item.damage},
         {"attackAbility", item.attackAbility}, {"hands", item.hands}, {"weight", item.weight}, {"value", item.value},
         {"quantity", item.quantity}, {"magic", item.magic}, {"modifiers", modifiers}};
+    if (item.supplies > 0) j["supplies"] = item.supplies;
     if (item.use) j["use"] = json::parse(item.use->json);
     return j.dump(2);
 }

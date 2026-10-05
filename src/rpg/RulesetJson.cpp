@@ -75,9 +75,14 @@ std::string Ruleset::toJson() const
     {
         j["rests"].push_back({{"id", r.id}, {"name", r.name}, {"perAdventure", r.perAdventure}, {"recovery", recoveryToJson(r.recovery)}});
         if (!r.restores.empty()) j["rests"].back()["restores"] = r.restores;
+        if (r.supplyCost > 0) j["rests"].back()["supplyCost"] = r.supplyCost;
+        if (r.campOnly) j["rests"].back()["campOnly"] = true;
+        if (!r.resets.empty()) j["rests"].back()["resets"] = r.resets;
     }
     j["afterVictory"] = recoveryToJson(afterVictory);
     j["reviveAfterVictory"] = reviveAfterVictory;
+    j["revivePrice"] = revivePrice;
+    j["reviveHp"] = reviveHp;
     j["defaultHitDie"] = defaultHitDie;
     j["hitDieAbility"] = hitDieAbility;
     j["hitDieByClass"] = J::object();
@@ -233,13 +238,24 @@ std::optional<Ruleset> Ruleset::fromJson(std::string_view json, std::string* err
             RestDefinition def{rest.at("id").get<std::string>(), rest.value("name", std::string{}),
                 recoveryFromJson(rest.value("recovery", nlohmann::json::object())), rest.value("perAdventure", 0)};
             def.restores = rest.value("restores", std::vector<std::string>{});
+            def.supplyCost = rest.value("supplyCost", 0);
+            def.campOnly = rest.value("campOnly", false);
+            def.resets = rest.value("resets", std::vector<std::string>{});
             const bool named = std::all_of(def.restores.begin(), def.restores.end(), [](const std::string& name) { return !name.empty() && name.size() <= 64; });
-            if (def.id.empty() || !ids.insert(def.id).second || def.perAdventure < 0 || !named || def.restores.size() > 100)
+            if (def.id.empty() || !ids.insert(def.id).second || def.perAdventure < 0 || !named || def.restores.size() > 100
+                || def.supplyCost < 0 || def.supplyCost > 100000)
                 throw std::invalid_argument("Invalid rest definition");
             r.rests.push_back(std::move(def));
         }
+        for (const RestDefinition& entry : r.rests)
+            for (const std::string& other : entry.resets)
+                if (!r.rest(other)) throw std::invalid_argument("Rest " + entry.id + " resets an unknown rest");
         r.afterVictory = recoveryFromJson(j.value("afterVictory", nlohmann::json::object()));
         r.reviveAfterVictory = j.value("reviveAfterVictory", 0);
+        r.revivePrice = j.value("revivePrice", 0);
+        r.reviveHp = j.value("reviveHp", 0);
+        if (r.revivePrice < 0 || r.revivePrice > 100000000 || r.reviveHp < 0 || r.reviveHp > 100000)
+            throw std::invalid_argument("Invalid revival: a price and HP from 0");
         r.defaultHitDie = j.value("defaultHitDie", r.defaultHitDie);
         r.hitDieAbility = j.value("hitDieAbility", r.hitDieAbility);
         const nlohmann::json dice = j.value("hitDieByClass", nlohmann::json::object());

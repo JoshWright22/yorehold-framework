@@ -99,6 +99,9 @@ struct RestDefinition
     int perAdventure = 0; // 0 = unlimited
     // Resources it refills (see Character::restoreResources): "*" for all, "slots-*" for a family.
     std::vector<std::string> restores;
+    int supplyCost = 0;    // supply points it uses up (see Stash and Item::supplies); 0 = free
+    bool campOnly = false; // only where the game says the party has made camp
+    std::vector<std::string> resets; // rest ids whose uses come back when this one is taken
 };
 
 // How score -> modifier works.
@@ -185,6 +188,10 @@ struct Ruleset
     std::vector<RestDefinition> rests;
     Recovery afterVictory;
     int reviveAfterVictory = 0; // downed winners get up with this much HP (0 = they stay down)
+    // Bringing back the dead for coins (Character::revive): the price in the smallest coin
+    // (0 = it can't be bought) and the HP they come back with (0 = full).
+    int revivePrice = 0;
+    int reviveHp = 0;
     int defaultHitDie = 8;
     std::vector<std::pair<std::string, int>> hitDieByClass; // {"Fighter", 10}
     std::string hitDieAbility = "con";                      // added per hit die (empty = none)

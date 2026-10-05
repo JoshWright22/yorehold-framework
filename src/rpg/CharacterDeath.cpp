@@ -23,6 +23,19 @@ void Character::syncDeath(const Ruleset& rules)
     condition(rule.deadCondition, death.dead);
 }
 
+bool Character::revive(const Ruleset& rules, int amount)
+{
+    if (!death.dead)
+        return false;
+    death = {death.saves};
+    hp = amount <= 0 ? maxHp() : std::min(amount, maxHp());
+    hp = std::max(hp, 1);
+    if (!rules.death.deadCondition.empty())
+        removeCondition(rules.death.deadCondition);
+    syncDeath(rules);
+    return true;
+}
+
 bool Character::takeDamage(int amount, const Ruleset& rules, bool critical)
 {
     syncDeath(rules);

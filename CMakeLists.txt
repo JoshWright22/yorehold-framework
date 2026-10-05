@@ -158,6 +158,7 @@ add_library(yorehold-framework
     src/rpg/Compendium.cpp
     src/rpg/Dialogue.cpp
     src/rpg/Loot.cpp
+    src/rpg/Stash.cpp
     src/rpg/Effect.cpp
     src/rpg/EffectJson.cpp
     src/rpg/QuestJournal.cpp
@@ -229,6 +230,7 @@ if(YOREHOLD_FRAMEWORK_UNIT_TESTS AND NOT ANDROID AND NOT CMAKE_SYSTEM_NAME STREQ
         tests/unit/ChoicesTests.cpp
         tests/unit/CameraControlTests.cpp
         tests/unit/CutsceneTests.cpp
+        tests/unit/StashTests.cpp
     )
     target_link_libraries(yorehold-framework-unit-tests PRIVATE yorehold::framework webp)
     target_include_directories(yorehold-framework-unit-tests PRIVATE ${stb_dir})

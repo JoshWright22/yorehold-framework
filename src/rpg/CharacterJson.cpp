@@ -103,6 +103,7 @@ std::string Character::toJson() const
             {"attackAbility", item.attackAbility}, {"hands", item.hands}, {"weight", item.weight}, {"value", item.value},
             {"quantity", item.quantity}, {"magic", item.magic}, {"equipped", item.equipped}, {"modifiers", itemModifiers},
         });
+        if (item.supplies > 0) items.back()["supplies"] = item.supplies;
         if (item.use) items.back()["use"] = json::parse(item.use->json);
     }
     j["inventory"] = items;
@@ -209,6 +210,7 @@ std::optional<Character> Character::fromJson(std::string_view text, std::string*
                 item.value = i.value("value", 0);
                 item.quantity = i.value("quantity", 1);
                 item.magic = i.value("magic", false);
+                item.supplies = std::clamp(i.value("supplies", 0), 0, 10000);
                 item.equipped = i.value("equipped", false);
                 if (i.contains("use"))
                 {

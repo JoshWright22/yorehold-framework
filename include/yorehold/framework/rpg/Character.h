@@ -28,6 +28,7 @@ struct Item
     int value = 0;      // copper
     int quantity = 1;
     bool magic = false; // counts toward the ruleset's magic item limit
+    int supplies = 0;   // camp supply points each unit is worth (food); 0 = not a supply
     bool equipped = false;
     std::vector<Modifier> modifiers; // apply while equipped
     std::shared_ptr<const ActionDefinition> use; // optional consumable action, preserved with the item
@@ -124,6 +125,9 @@ public:
     bool down() const { return hp <= 0; }
     // Applies a rest's or a win's healing. Returns the HP gained; `detail` gets the roll ("2d10+4: ...").
     int recover(const Ruleset& rules, const Recovery& recovery, Random& random, std::string* detail = nullptr);
+    // Brings a dead character back with `hp` (0 or more than max = max HP) and fresh death saves.
+    // False if it wasn't dead. Nothing ordinary heals the dead, so revival is its own step.
+    bool revive(const Ruleset& rules, int hp);
 
     // Puts an item on, taking off whatever was in its slot. Held items ("mainHand", "offHand"...)
     // share the character's hands: taking up something that needs more than are free puts the

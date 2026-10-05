@@ -12,6 +12,7 @@
 #include "ChoicesTests.h"
 #include "CameraControlTests.h"
 #include "CutsceneTests.h"
+#include "StashTests.h"
 
 #include <yorehold/framework/animation/SpriteSheet.h>
 #include <yorehold/framework/animation/Tween.h>
@@ -1509,6 +1510,7 @@ int main()
         {"Character choices", regression::characterChoices},
         {"Camera controls", regression::cameraControls},
         {"Cutscenes", regression::cutscenes},
+        {"Stash and supplies", regression::stashAndSupplies},
         {"Tweens", tweens},
         {"Particles", particles},
         {"Visibility/fog", visibilityAndFog},
