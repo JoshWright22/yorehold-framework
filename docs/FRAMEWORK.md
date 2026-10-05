@@ -57,6 +57,8 @@ map.setLayerImage(ground, "maps/tavern.webp", assets.texture("maps/tavern.webp",
 
 `Kit` is a JSON object prototype. `Objects::place` creates independent instances with unique ids. Tags control movement/sight blocking, containers, destructibility, levers and throwing; optional components carry door state, health and lights. Inventory keys use `key:*`; levers and doors share `link:*`. `walls()` and `lights()` feed visibility and lighting. `throwTo` animates ground position plus a visual arc; `update` reports landings after iteration, so callbacks can safely remove objects. Flight state survives saves. The client decides throw range, collision/hit rules and landing damage.
 
+Two more components cover locks and traps; the game makes the rolls. `"lock": {"dc": 15, "skill": "dex"}` goes with a locked `door` (a chest uses a door for its lid): `unlock(id)` clears `locked` after the game's check passed, and dc 0 means only a key works. `"trap": {"detectDc", "disarmDc", "detectSkill", "disarmSkill", "effect", "armed", "found", "rearms"}` holds an effect as JSON text (an inline array or object is kept as text too). `trapsIn(area, floor)` lists the armed ones under an area, `spring(id)` returns the effect and disarms it unless it `rearms`, and `disarm(id)` turns it off. Both components round-trip through kits and saves.
+
 `Regions` registers authored loaders. `enter(player, id)` loads before leaving the current region. Every occupied region ticks; leaving its last player saves and unloads it. Returning restores object/map/variable/clock state. Empty regions never advance. Membership changes must happen outside update callbacks. `WorldPosition` retains doubles until subtracting the camera origin, preserving local motion far from the origin.
 
 ```cpp

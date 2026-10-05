@@ -282,6 +282,30 @@ void objectsAndRegions()
     int landings = 0;
     midFlight->update(0.6, [&](yh::ObjectId id) { ++landings; CHECK(id == crateId); midFlight->remove(id); });
     CHECK(landings == 1 && !midFlight->get(crateId));
+
+    // Locks a check can open, and traps that go off once.
+    auto lockedKit = yh::Kit::fromJson(R"({"name":"strongbox","object":{"tags":["container"],"door":{"locked":true},
+        "lock":{"dc":15,"skill":"dex"},"contents":{"gem":1}}})");
+    CHECK(lockedKit && lockedKit->prototype.lock && lockedKit->prototype.lock->dc == 15 && lockedKit->prototype.lock->skill == "dex");
+    const auto box = objects.place(*lockedKit, {200, 0});
+    CHECK(objects.get(box)->locked() && objects.take(box, "gem", 1) == 0 && objects.interact(box) == yh::Interaction::Locked);
+    CHECK(objects.unlock(box) && !objects.unlock(box) && !objects.get(box)->door->open);
+    CHECK(objects.interact(box) == yh::Interaction::Opened && objects.take(box, "gem", 1) == 1);
+    auto trapKit = yh::Kit::fromJson(R"({"name":"darts","object":{"area":[0,0,32,32],"trap":{"detectDc":14,"disarmDc":12,
+        "detectSkill":"perception","effect":[{"kind":"damage","amount":"1d4","type":"piercing"}]}}})");
+    CHECK(trapKit && trapKit->prototype.trap && trapKit->prototype.armedTrap() && !trapKit->prototype.blocksMovement());
+    CHECK(trapKit->prototype.trap->effect.find("piercing") != std::string::npos);
+    const auto darts = objects.place(*trapKit, {300, 300});
+    CHECK(objects.trapsIn({310, 310, 4, 4}, 0) == std::vector<yh::ObjectId>{darts} && objects.trapsIn({310, 310, 4, 4}, 1).empty());
+    const auto effect = objects.spring(darts);
+    CHECK(effect && effect->find("1d4") != std::string::npos && objects.get(darts)->trap->found);
+    CHECK(!objects.spring(darts) && objects.trapsIn({310, 310, 4, 4}, 0).empty());
+    const auto darts2 = objects.place(*trapKit, {400, 400});
+    CHECK(objects.disarm(darts2) && !objects.disarm(darts2) && !objects.spring(darts2));
+    const auto lockSaved = yh::Objects::fromJson(objects.toJson());
+    CHECK(lockSaved && lockSaved->toJson() == objects.toJson() && lockSaved->get(darts2)->trap->found);
+    CHECK(!yh::Kit::fromJson(R"({"name":"bad","object":{"lock":{"dc":-1}}})"));
+
     yh::Regions regions;
     int loads = 0;
     auto loader = [&](std::string_view id) {

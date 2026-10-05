@@ -19,6 +19,13 @@ Json encode(const MapObject& o)
         {"floor", o.floor}, {"tags", o.tags}, {"weight", o.weight}, {"destroyed", o.destroyed}, {"contents", o.contents}};
     if (o.door) j["door"] = {{"open", o.door->open}, {"locked", o.door->locked}};
     if (o.durability) j["durability"] = {{"health", o.durability->health}, {"maximum", o.durability->maximum}};
+    if (o.lock) j["lock"] = {{"dc", o.lock->dc}, {"skill", o.lock->skill}};
+    if (o.trap)
+    {
+        const Trap& t = *o.trap;
+        j["trap"] = {{"detectDc", t.detectDc}, {"disarmDc", t.disarmDc}, {"detectSkill", t.detectSkill}, {"disarmSkill", t.disarmSkill},
+            {"effect", t.effect}, {"armed", t.armed}, {"found", t.found}, {"rearms", t.rearms}};
+    }
     if (o.flight) j["flight"] = {{"from", {o.flight->from.x, o.flight->from.y}}, {"to", {o.flight->to.x, o.flight->to.y}},
         {"elapsed", o.flight->elapsed}, {"seconds", o.flight->seconds}, {"height", o.flight->height}};
     if (o.light)
@@ -75,6 +82,28 @@ MapObject decode(const Json& j)
         o.durability = Durability{d.at("health").get<int>(), d.at("maximum").get<int>()};
         if (o.durability->maximum <= 0 || o.durability->health < 0 || o.durability->health > o.durability->maximum)
             throw std::invalid_argument("Invalid object durability");
+    }
+    if (j.contains("lock"))
+    {
+        const auto& l = j.at("lock");
+        o.lock = Lock{l.value("dc", 0), l.value("skill", std::string{})};
+        if (o.lock->dc < 0) throw std::invalid_argument("Invalid lock dc");
+    }
+    if (j.contains("trap"))
+    {
+        const auto& t = j.at("trap");
+        Trap trap;
+        trap.detectDc = t.value("detectDc", trap.detectDc);
+        trap.disarmDc = t.value("disarmDc", trap.disarmDc);
+        trap.detectSkill = t.value("detectSkill", std::string{});
+        trap.disarmSkill = t.value("disarmSkill", std::string{});
+        // Authored traps may write the effect as JSON in place; it is kept as text either way.
+        if (t.contains("effect")) trap.effect = t.at("effect").is_string() ? t.at("effect").get<std::string>() : t.at("effect").dump();
+        trap.armed = t.value("armed", true);
+        trap.found = t.value("found", false);
+        trap.rearms = t.value("rearms", false);
+        if (trap.detectDc < 0 || trap.disarmDc < 0) throw std::invalid_argument("Invalid trap dc");
+        o.trap = trap;
     }
     if (j.contains("light"))
     {
@@ -213,6 +242,44 @@ int Objects::take(ObjectId id, std::string_view item, int amount)
     it->second -= taken;
     if (it->second == 0) o->contents.erase(it);
     return taken;
+}
+
+bool Objects::unlock(ObjectId id)
+{
+    MapObject* o = get(id);
+    if (!o || o->destroyed || !o->locked()) return false;
+    o->door->locked = false;
+    return true;
+}
+
+bool Objects::disarm(ObjectId id)
+{
+    MapObject* o = get(id);
+    if (!o || !o->armedTrap()) return false;
+    o->trap->armed = false;
+    o->trap->found = true;
+    return true;
+}
+
+std::optional<std::string> Objects::spring(ObjectId id)
+{
+    MapObject* o = get(id);
+    if (!o || !o->armedTrap()) return std::nullopt;
+    o->trap->found = true;
+    o->trap->armed = o->trap->rearms;
+    return o->trap->effect;
+}
+
+std::vector<ObjectId> Objects::trapsIn(const Rect& area, int floor) const
+{
+    std::vector<ObjectId> out;
+    for (const auto& [id, object] : objects_)
+    {
+        if (object.floor != floor || !object.armedTrap()) continue;
+        const Rect overlap = area.intersect(object.area);
+        if (overlap.w > 0 && overlap.h > 0) out.push_back(id);
+    }
+    return out;
 }
 
 bool Objects::throwTo(ObjectId id, Vec2 destination, double seconds, float height)

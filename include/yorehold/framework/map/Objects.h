@@ -26,6 +26,28 @@ struct Durability
     int maximum = 10;
 };
 
+// A lock a check can open. The door's `locked` flag says whether it is shut; this says how hard
+// it is. dc 0 means only a key opens it. The game picks the dice and the skill's meaning.
+struct Lock
+{
+    int dc = 0;
+    std::string skill;
+};
+
+// Something that goes off when stepped on. `effect` is left as JSON text for the game to run
+// (yh::Effect in the rpg module). Hidden traps are found with a check against detectDc.
+struct Trap
+{
+    int detectDc = 10;
+    int disarmDc = 10;
+    std::string detectSkill;
+    std::string disarmSkill;
+    std::string effect;
+    bool armed = true;
+    bool found = false;
+    bool rearms = false; // stays armed after going off
+};
+
 struct ThrowMotion
 {
     Vec2 from, to; // ground-plane top-left positions
@@ -45,6 +67,8 @@ struct MapObject
     std::set<std::string, std::less<>> tags;
     std::optional<Door> door;
     std::optional<Durability> durability;
+    std::optional<Lock> lock;
+    std::optional<Trap> trap;
     std::map<std::string, int, std::less<>> contents;
     std::optional<Light> light;
     float weight = 1;
@@ -54,6 +78,8 @@ struct MapObject
     bool has(std::string_view tag) const { return tags.contains(tag); }
     bool blocksMovement() const { return !destroyed && !flight && (!door || !door->open) && has("blocksMovement"); }
     bool blocksSight() const { return !destroyed && !flight && (!door || !door->open) && has("blocksSight"); }
+    bool locked() const { return door && door->locked; }
+    bool armedTrap() const { return !destroyed && trap && trap->armed; }
 };
 
 struct Kit
@@ -81,6 +107,14 @@ public:
     Interaction interact(ObjectId id, std::span<const std::string> keys = {});
     bool damage(ObjectId id, int amount);
     int take(ObjectId id, std::string_view item, int amount);
+    // After a check the caller made: unlock leaves the door shut, only open to the next interact.
+    bool unlock(ObjectId id);
+    bool disarm(ObjectId id);
+    // The trap goes off: returns its effect JSON (nothing if no armed trap is there) and disarms it
+    // unless it rearms. Finding it is part of going off.
+    std::optional<std::string> spring(ObjectId id);
+    // Armed traps whose area overlaps `area` on `floor`, in id order.
+    std::vector<ObjectId> trapsIn(const Rect& area, int floor) const;
     bool throwTo(ObjectId id, Vec2 destination, double seconds = 0.6, float height = 80);
     // Arc state is saved with the object, so frozen regions resume in-flight throws.
     void update(double dt, const std::function<void(ObjectId)>& landed = {});
