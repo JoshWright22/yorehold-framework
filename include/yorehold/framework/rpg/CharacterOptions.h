@@ -96,6 +96,9 @@ struct ClassLevel
     // Spell slots by slot level, as totals at this class level. A row without them keeps the
     // previous row's.
     std::map<int, int> slots;
+    // For a prepared or spontaneous caster, how many spells it prepares or keeps at this class
+    // level. 0 = keep the previous row's.
+    int spells = 0;
 };
 
 // The player options a ruleset offers, read from its folder: races/, backgrounds/ and feats/,

@@ -324,6 +324,83 @@ void lists()
     CHECK(sheet->spells.size() == 4 && sheet->resources.at("slots-2").max == 2);
 }
 
+// Spells that spend a resource instead of a slot, and classes that prepare or keep a few.
+void castingStyles()
+{
+    std::string error;
+    const char* step = R"("effects":[{"do":"damage","dice":"1d4"}]})";
+    const auto dart = yh::SpellDefinition::fromJson(std::string(R"({"id":"dart","level":1,"spends":{"focus":1},)") + step, &error);
+    CHECK(dart && error.empty() && dart->spends == std::map<std::string, int>{{"focus", 1}});
+    const auto older = yh::SpellDefinition::fromJson(std::string(R"({"id":"dart","level":1,"spends":["focus","focus"],)") + step);
+    CHECK(older && older->spends == std::map<std::string, int>{{"focus", 2}});
+    CHECK(!yh::SpellDefinition::fromJson(std::string(R"({"id":"x","spends":{"focus":0},)") + step, &error) && error.find("spends") == 0);
+    CHECK(!yh::SpellDefinition::fromJson(std::string(R"({"id":"x","spends":"focus",)") + step, &error) && error.find("spends") == 0);
+    if (!dart) return;
+
+    // A focus spell needs no slot and is refused with an empty pool.
+    const yh::SpellRules rules;
+    yh::Character caster;
+    caster.resources["focus"] = {1, 1};
+    std::string why;
+    CHECK(yh::slotFor(caster, *dart, rules) == 0 && yh::canCast(caster, *dart, rules));
+    CHECK(yh::spendCasting(caster, *dart, rules, 0) && caster.resources["focus"].current == 0);
+    CHECK(!yh::canCast(caster, *dart, rules, &why) && why == "needs 1 focus" && !yh::spendCasting(caster, *dart, rules, 0));
+    caster.resources["slots-1"] = {1, 1};
+    const auto fan = yh::SpellDefinition::fromJson(std::string(R"({"id":"fan","level":1,"hands":0,)") + step);
+    CHECK(fan && yh::spendCasting(caster, *fan, rules, 1) && caster.resources["slots-1"].current == 0 && !yh::spendCasting(caster, *fan, rules, 1));
+
+    // Classes: a level row's "spells" is how many it prepares or keeps; a row without one keeps the last.
+    yh::Compendium compendium;
+    for (const char* text : {R"({"id":"spark",)", R"({"id":"fan","level":1,)", R"({"id":"mire","level":1,)", R"({"id":"ward","level":1,)",
+             R"({"id":"gale","level":2,)", R"({"id":"dart","level":1,"spends":{"focus":1},)"})
+    {
+        const auto spell = yh::SpellDefinition::fromJson(std::string(text) + step);
+        if (spell) compendium.spells[spell->id()] = *spell;
+    }
+    const char* levels = R"("levels":[{"slots":{"1":2},"spells":2,"features":[{"id":"pool","resources":{"focus":1}}]},{"slots":{"1":3}},{"slots":{"1":4,"2":2},"spells":3}]})";
+    const auto sage = yh::Compendium::classFromJson(std::string(R"({"id":"sage","casting":"prepared","spells":{"0":["spark"],"1":["fan","mire","ward","dart"],"2":["gale"]},)") + levels, &error);
+    const auto bard = yh::Compendium::classFromJson(std::string(R"({"id":"bard","casting":"spontaneous","spells":{"1":["fan","mire","ward"]},)") + levels);
+    CHECK(sage && error.empty() && sage->casting == "prepared" && sage->levels[0].spells == 2 && sage->levels[1].spells == 0);
+    CHECK(sage && yh::Compendium::classFromJson(yh::Compendium::classToJson(*sage))
+        && yh::Compendium::classToJson(*yh::Compendium::classFromJson(yh::Compendium::classToJson(*sage))) == yh::Compendium::classToJson(*sage));
+    CHECK(!yh::Compendium::classFromJson(R"({"id":"x","casting":"sometimes"})", &error) && error.find("casting") == 0);
+    CHECK(!yh::Compendium::classFromJson(R"({"id":"x","levels":[{"spells":-1}]})", &error) && error.find("levels[0].spells") == 0);
+    if (!sage || !bard) return;
+    compendium.classes["sage"] = *sage;
+    compendium.classes["bard"] = *bard;
+
+    const auto ruleset = yh::Ruleset::modern();
+    yh::CharacterChoices choices;
+    choices.name = "Ola";
+    for (const auto& ability : ruleset.abilities)
+        choices.scores[ability.id] = 10;
+    choices.levels = {{"sage", {}}};
+    auto first = compendium.build(ruleset, choices, &error);
+    CHECK(first && error.empty() && first->spells == std::vector<std::string>{"spark", "dart", "fan", "mire"}
+        && first->preparable == std::vector<std::string>{"fan", "mire", "ward"} && first->prepareLimit == 2
+        && first->prepared == std::vector<std::string>{"fan", "mire"});
+    if (!first) return;
+    CHECK(!first->prepare({"fan", "mire", "ward"}, &why) && why.find("at most 2") != std::string::npos);
+    CHECK(!first->prepare({"gale"}) && !first->prepare({}) && !first->prepare({"ward", "ward"}));
+    CHECK(first->prepare({"ward"}) && first->spells == std::vector<std::string>{"spark", "dart", "ward"} && first->prepared == std::vector<std::string>{"ward"});
+    const auto saved = yh::Character::fromJson(first->toJson());
+    CHECK(saved && saved->prepared == first->prepared && saved->preparable == first->preparable && saved->prepareLimit == 2);
+
+    // Levelling up keeps the choice, widens the list and raises the count.
+    choices.levels = {{"sage", {}}, {"sage", {}}, {"sage", {}}};
+    const auto third = compendium.build(ruleset, choices, &error);
+    CHECK(third && third->prepareLimit == 3 && third->preparable.size() == 4 && third->prepared.size() == 3);
+    if (!third) return;
+    first->adoptBuild(*third);
+    CHECK(first->prepared == std::vector<std::string>{"ward"} && first->prepareLimit == 3
+        && first->spells == std::vector<std::string>{"spark", "dart", "ward"} && first->prepare({"ward", "gale", "fan"}));
+
+    // A spontaneous caster keeps its picks, then the list's first.
+    choices.levels = {{"bard", {{"spells", {"ward"}}}}};
+    const auto bardSheet = compendium.build(ruleset, choices, &error);
+    CHECK(bardSheet && error.empty() && bardSheet->spells == std::vector<std::string>{"ward", "fan"} && bardSheet->preparable.empty());
+}
+
 }
 
 void spells()
@@ -333,6 +410,7 @@ void spells()
     slotsAndHands();
     concentrating();
     lists();
+    castingStyles();
 }
 
 }

@@ -3,6 +3,7 @@
 #include "yorehold/framework/rpg/Action.h"
 
 #include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -18,7 +19,9 @@ struct SpellDefinition
     int level = 0;  // 0 = a cantrip, which spends no slot
     int hands = 1;  // hands the casting needs; also its cost in actions unless the file gives a cost
     bool concentration = false; // what it leaves on creatures lasts only while the caster concentrates
-    std::vector<std::string> spends; // resource ids it costs in addition to slots (empty = none)
+    // Resources it costs instead of a slot, with how many of each (empty = it spends a slot).
+    // A class lists such a spell and the sheet knows it once it has all of them, at any slot level.
+    std::map<std::string, int> spends;
     ActionDefinition action;    // id, name, description, target, area, save and effects
     std::string json;           // as it was read, in canonical form (for content signatures)
 
@@ -63,14 +66,16 @@ struct SpellRules
     bool check(const Ruleset& rules, std::string* error = nullptr) const;
 };
 
-// The slot level a casting would spend: 0 for a cantrip, otherwise the lowest level from the
-// spell's own that still has a slot (only its own without upcasting). `wanted` above 0 asks for
-// that level exactly. Empty if there is none to spend.
+// The slot level a casting would spend: 0 for a cantrip or a spell that spends resources instead,
+// otherwise the lowest level from the spell's own that still has a slot (only its own without
+// upcasting). `wanted` above 0 asks for that level exactly. Empty if there is none to spend.
 std::optional<int> slotFor(const Character& caster, const SpellDefinition& spell, const SpellRules& rules, int wanted = 0);
-// The caster has a slot for it and, where the rules ask, the hands free. `why` gets a short reason if not.
+// The caster has a slot (or the resources it spends) and, where the rules ask, the hands free.
+// `why` gets a short reason if not ("needs 1 focus").
 bool canCast(const Character& caster, const SpellDefinition& spell, const SpellRules& rules, std::string* why = nullptr);
-// Spends a slot of that level and any custom resources the spell costs. Level 0 spends nothing.
-void spendCasting(Character& caster, const SpellDefinition& spell, const SpellRules& rules, int slot);
+// Spends what one casting costs: the slot of that level (0 spends none) or the spell's resources.
+// False, with nothing spent, if the sheet is short of any of it.
+bool spendCasting(Character& caster, const SpellDefinition& spell, const SpellRules& rules, int slot);
 // Takes one slot of that level off the sheet. Level 0 spends nothing. False if there was none.
 bool spendSlot(Character& caster, const SpellRules& rules, int slot);
 

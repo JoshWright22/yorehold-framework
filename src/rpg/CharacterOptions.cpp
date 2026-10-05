@@ -271,7 +271,7 @@ std::optional<std::vector<ClassLevel>> classLevelsFromJson(std::string_view sour
             const json& row = rows.at(i);
             const std::string path = "levels[" + std::to_string(i) + "].";
             if (!row.is_object()) fail(path.substr(0, path.size() - 1), "is an object");
-            onlyFields(row, path, {"features", "ranks", "feats", "skills", "slots"});
+            onlyFields(row, path, {"features", "ranks", "feats", "skills", "slots", "spells"});
             ClassLevel level;
             if (row.contains("features"))
             {
@@ -297,6 +297,7 @@ std::optional<std::vector<ClassLevel>> classLevelsFromJson(std::string_view sour
                 if (std::none_of(std::begin(FeatDefinition::kinds), std::end(FeatDefinition::kinds), [&](const char* k) { return kind == k; }))
                     fail(path + "feats", "lists feat kinds: \"class\", \"skill\", \"general\" or \"race\"");
             level.skills = number(row, path, "skills", 0, 0, 100);
+            level.spells = number(row, path, "spells", 0, 0, 1000);
             if (row.contains("slots"))
             {
                 if (!row.at("slots").is_object()) fail(path + "slots", "maps a slot level to a number of slots");
@@ -342,6 +343,7 @@ std::string classLevelsToJson(const std::vector<ClassLevel>& levels)
         if (!level.ranks.empty()) row["ranks"] = level.ranks;
         if (!level.feats.empty()) row["feats"] = level.feats;
         if (level.skills) row["skills"] = level.skills;
+        if (level.spells) row["spells"] = level.spells;
         if (!level.slots.empty())
         {
             json slots = json::object();

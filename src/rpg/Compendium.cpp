@@ -166,8 +166,9 @@ std::optional<ClassDefinition> Compendium::classFromJson(std::string_view text, 
         c.resources = resourcesFrom(j);
         if (c.dcAbility.size() > 64) throw std::invalid_argument("DC ability is too long");
         c.items = j.value("items", std::vector<std::string>{});
-        c.casting = j.value("casting", std::string{});
-        c.prepareLimit = j.value("prepareLimit", 0);
+        c.casting = j.value("casting", c.casting);
+        if (c.casting != "known" && c.casting != "prepared" && c.casting != "spontaneous")
+            throw std::invalid_argument("casting: is \"known\", \"prepared\" or \"spontaneous\"");
         if (j.contains("spells"))
         {
             if (!j.at("spells").is_object()) throw std::invalid_argument("spells: maps a spell level to a list of spell ids");
@@ -264,6 +265,7 @@ std::string Compendium::classToJson(const ClassDefinition& c)
     if (!c.levels.empty()) j["levels"] = json::parse(classLevelsToJson(c.levels));
     for (const auto& [level, ids] : c.spells)
         j["spells"][std::to_string(level)] = ids;
+    if (c.casting != "known") j["casting"] = c.casting;
     return j.dump(2);
 }
 
@@ -687,6 +689,7 @@ std::optional<Character> Compendium::build(const Ruleset& rules, const Character
     std::set<std::string> classesSoFar;
     std::map<std::string, int> classLevels;
     std::map<std::string, std::map<int, int>> slotsByClass; // each class's slot row at its level
+    std::map<std::string, int> spellCountByClass;           // and how many spells it prepares or keeps
     for (size_t i = 0; i < choices.levels.size(); i++)
     {
         const LevelChoice& level = choices.levels[i];
@@ -701,6 +704,7 @@ std::optional<Character> Compendium::build(const Ruleset& rules, const Character
                 grant(feature.gives, "build:feature:" + definition.id + ":" + feature.id);
             raise(row->ranks);
             if (!row->slots.empty()) slotsByClass[definition.id] = row->slots;
+            if (row->spells > 0) spellCountByClass[definition.id] = row->spells;
         }
 
         const std::string at = "levels[" + std::to_string(i) + "].picks.";
@@ -758,34 +762,85 @@ std::optional<Character> Compendium::build(const Ruleset& rules, const Character
             slots[slotLevel] = std::max(slots[slotLevel], count);
     for (const auto& [slotLevel, count] : slots)
         if (count > 0) c.resources["slots-" + std::to_string(slotLevel)] = {count, count};
-    // Spells: each class's cantrips, and what it lists at the levels the sheet has slots for.
+    // Spells. Always known: each class's cantrips, and the spells it lists that spend resources
+    // instead of slots once the sheet has those resources. A levelled spell needs a slot of its
+    // level; a "known" class knows all of those, a "prepared" one chooses its count of them and a
+    // "spontaneous" one keeps a fixed set: the character's "spells" picks, then the list's first.
     int highestSlot = 0;
     for (const auto& [slotLevel, count] : slots)
         if (count > 0) highestSlot = std::max(highestSlot, slotLevel);
+    auto has = [](const std::vector<std::string>& list, const std::string& id) { return std::find(list.begin(), list.end(), id) != list.end(); };
+    auto alwaysKnown = [&](const SpellDefinition& spell) {
+        if (spell.level == 0) return true;
+        if (spell.spends.empty()) return false;
+        return std::all_of(spell.spends.begin(), spell.spends.end(), [&](const auto& cost) {
+            const auto found = c.resources.find(cost.first);
+            return found != c.resources.end() && found->second.max > 0;
+        });
+    };
+    std::vector<std::string> picked;
+    for (const LevelChoice& level : choices.levels)
+        if (const auto found = level.picks.find("spells"); found != level.picks.end())
+            picked.insert(picked.end(), found->second.begin(), found->second.end());
+    std::vector<std::string> chosen; // prepared and spontaneous spells, after what is always known
     std::set<const ClassDefinition*> listed;
     for (const ClassDefinition* definition : classes_)
     {
         if (!listed.insert(definition).second)
             continue;
+        std::vector<std::string> levelled;
         for (const auto& [spellLevel, ids] : definition->spells)
             for (const std::string& id : ids)
-                if (spellLevel <= highestSlot && spells.contains(id) && std::find(c.spells.begin(), c.spells.end(), id) == c.spells.end())
-                    c.spells.push_back(id);
-    }
-    // Prepared casters: set up preparable spells and the prepare limit.
-    for (const ClassDefinition* definition : classes_)
-    {
+            {
+                const auto spell = spells.find(id);
+                if (spell == spells.end())
+                    continue;
+                if (alwaysKnown(spell->second))
+                {
+                    if (!has(c.spells, id)) c.spells.push_back(id);
+                }
+                else if (spell->second.spends.empty() && spellLevel <= highestSlot && !has(levelled, id))
+                    levelled.push_back(id);
+            }
+        const int count = spellCountByClass.contains(definition->id) ? spellCountByClass.at(definition->id) : 0;
         if (definition->casting == "prepared")
         {
-            for (const auto& [spellLevel, ids] : definition->spells)
-                for (const std::string& id : ids)
-                    if (spellLevel <= highestSlot && spells.contains(id) && std::find(c.preparable.begin(), c.preparable.end(), id) == c.preparable.end())
-                        c.preparable.push_back(id);
-            c.prepareLimit = std::max(c.prepareLimit, definition->prepareLimit);
-            // Initially prepared spells = all preparable (can be chosen later)
-            c.prepared = c.preparable;
+            int added = 0;
+            for (const std::string& id : levelled)
+                if (!has(c.preparable, id))
+                {
+                    c.preparable.push_back(id);
+                    if (added < count && !has(c.prepared, id))
+                    {
+                        c.prepared.push_back(id);
+                        added++;
+                    }
+                }
+            c.prepareLimit += count;
+        }
+        else if (definition->casting == "spontaneous")
+        {
+            std::vector<std::string> kept;
+            for (const std::string& id : picked)
+                if (static_cast<int>(kept.size()) < count && has(levelled, id) && !has(kept, id)) kept.push_back(id);
+            for (const std::string& id : levelled)
+                if (static_cast<int>(kept.size()) < count && !has(kept, id)) kept.push_back(id);
+            for (const std::string& id : kept)
+                if (!has(chosen, id)) chosen.push_back(id);
+        }
+        else
+        {
+            for (const std::string& id : levelled)
+                if (!has(chosen, id)) chosen.push_back(id);
         }
     }
+    // A spell another class knows outright is not one to prepare.
+    std::erase_if(c.preparable, [&](const std::string& id) { return has(c.spells, id) || has(chosen, id); });
+    std::erase_if(c.prepared, [&](const std::string& id) { return !has(c.preparable, id); });
+    for (const std::string& id : chosen)
+        if (!has(c.spells, id)) c.spells.push_back(id);
+    for (const std::string& id : c.prepared)
+        c.spells.push_back(id);
 
     // HP last, so race and feat changes to CON count.
     const int con = c.abilityModifier(rules, "con");

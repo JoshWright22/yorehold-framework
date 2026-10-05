@@ -51,15 +51,29 @@ std::optional<SpellDefinition> SpellDefinition::fromJson(std::string_view source
         spell.concentration = truth(j, "concentration", false);
         if (j.contains("spends"))
         {
+            // {"focus": 1}; a plain list of names (one each) is the older form and still loads.
             const auto& spends = j.at("spends");
+            const char* shape = "spends: maps a resource name to how many it costs, 1 to 100";
             if (spends.is_array())
-                for (const auto& item : spends)
-                    if (item.is_string())
-                        spell.spends.push_back(item.get<std::string>());
-                    else
-                        throw std::invalid_argument("spends: is an array of resource names");
+            {
+                for (const auto& name : spends)
+                {
+                    if (!name.is_string() || name.get<std::string>().empty() || name.get<std::string>().size() > 64)
+                        throw std::invalid_argument(shape);
+                    spell.spends[name.get<std::string>()] += 1;
+                }
+            }
+            else if (spends.is_object())
+            {
+                for (const auto& [name, amount] : spends.items())
+                {
+                    if (name.empty() || name.size() > 64 || !amount.is_number_integer() || amount.get<long long>() < 1 || amount.get<long long>() > 100)
+                        throw std::invalid_argument(shape);
+                    spell.spends[name] = amount.get<int>();
+                }
+            }
             else
-                throw std::invalid_argument("spends: is an array of resource names or absent");
+                throw std::invalid_argument(shape);
         }
         for (const char* own : {"level", "hands", "concentration", "spends"})
             j.erase(own);
@@ -111,7 +125,7 @@ std::optional<SpellRules> SpellRules::fromJson(std::string_view text, std::strin
             for (const auto& [field, value] : object.items())
                 if (!fields.contains(field)) throw std::invalid_argument(path + field + ": unknown field");
         };
-        only(j, "", {"hands", "slotPrefix", "upcast", "concentration"});
+        only(j, "", {"hands", "slotPrefix", "upcast", "prepareAfter", "concentration"});
         SpellRules rules;
         const std::string hands = j.value("hands", std::string("free"));
         if (hands != "free" && hands != "ignored") throw std::invalid_argument("hands: is \"free\" or \"ignored\"");
@@ -119,6 +133,16 @@ std::optional<SpellRules> SpellRules::fromJson(std::string_view text, std::strin
         rules.slotPrefix = j.value("slotPrefix", rules.slotPrefix);
         if (rules.slotPrefix.empty() || rules.slotPrefix.size() > 60) throw std::invalid_argument("slotPrefix: is a name of 1 to 60 characters");
         rules.upcast = truth(j, "upcast", rules.upcast);
+        if (j.contains("prepareAfter") && !j.at("prepareAfter").is_null())
+        {
+            const json& after = j.at("prepareAfter");
+            if (!after.is_array()) throw std::invalid_argument("prepareAfter: is an array of rest ids");
+            for (const auto& rest : after)
+            {
+                if (!rest.is_string()) throw std::invalid_argument("prepareAfter: is an array of rest ids");
+                rules.prepareAfter.push_back(rest.get<std::string>());
+            }
+        }
         if (j.contains("concentration"))
         {
             const json& c = j.at("concentration");
@@ -157,7 +181,7 @@ bool SpellRules::check(const Ruleset& rules, std::string* error) const
 
 std::optional<int> slotFor(const Character& caster, const SpellDefinition& spell, const SpellRules& rules, int wanted)
 {
-    if (spell.level <= 0)
+    if (spell.level <= 0 || !spell.spends.empty())
         return 0;
     auto left = [&](int level) {
         const auto found = caster.resources.find(rules.slotPrefix + std::to_string(level));
@@ -180,6 +204,15 @@ bool canCast(const Character& caster, const SpellDefinition& spell, const SpellR
         if (why) *why = spell.hands == 1 ? "needs a free hand" : "needs " + std::to_string(spell.hands) + " free hands";
         return false;
     }
+    for (const auto& [resource, amount] : spell.spends)
+    {
+        const auto found = caster.resources.find(resource);
+        if (found == caster.resources.end() || found->second.current < amount)
+        {
+            if (why) *why = "needs " + std::to_string(amount) + " " + resource;
+            return false;
+        }
+    }
     if (!slotFor(caster, spell, rules))
     {
         if (why) *why = "no spell slot left";
@@ -188,22 +221,18 @@ bool canCast(const Character& caster, const SpellDefinition& spell, const SpellR
     return true;
 }
 
-void spendCasting(Character& caster, const SpellDefinition& spell, const SpellRules& rules, int slot)
+bool spendCasting(Character& caster, const SpellDefinition& spell, const SpellRules& rules, int slot)
 {
-    // Spend the slot
-    if (slot > 0)
+    if (!spell.spends.empty())
     {
-        const auto found = caster.resources.find(rules.slotPrefix + std::to_string(slot));
-        if (found != caster.resources.end() && found->second.current > 0)
-            found->second.current--;
+        for (const auto& [resource, amount] : spell.spends)
+            if (const auto found = caster.resources.find(resource); found == caster.resources.end() || found->second.current < amount)
+                return false;
+        for (const auto& [resource, amount] : spell.spends)
+            caster.resources[resource].current -= amount;
+        return true;
     }
-    // Spend any custom resources the spell requires
-    for (const std::string& resource : spell.spends)
-    {
-        const auto found = caster.resources.find(resource);
-        if (found != caster.resources.end() && found->second.current > 0)
-            found->second.current--;
-    }
+    return spendSlot(caster, rules, slot);
 }
 
 bool spendSlot(Character& caster, const SpellRules& rules, int slot)

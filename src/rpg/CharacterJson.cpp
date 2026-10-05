@@ -85,6 +85,12 @@ std::string Character::toJson() const
     j["resources"] = resources_;
     if (!spells.empty())
         j["spells"] = spells;
+    if (!preparable.empty())
+    {
+        j["preparable"] = preparable;
+        j["prepareLimit"] = prepareLimit;
+        j["prepared"] = prepared;
+    }
 
     json items = json::array();
     for (const Item& item : inventory)
@@ -179,6 +185,14 @@ std::optional<Character> Character::fromJson(std::string_view text, std::string*
         {
             c.spells = j.at("spells").get<std::vector<std::string>>();
             if (c.spells.size() > 1000) throw std::invalid_argument("Too many spells on a sheet");
+        }
+        if (j.contains("preparable"))
+        {
+            c.preparable = j.at("preparable").get<std::vector<std::string>>();
+            c.prepareLimit = j.value("prepareLimit", 0);
+            c.prepared = j.value("prepared", std::vector<std::string>{});
+            if (c.preparable.size() > 1000 || c.prepareLimit < 0 || c.prepareLimit > 1000 || c.prepared.size() > c.preparable.size())
+                throw std::invalid_argument("Bad prepared spells on a sheet");
         }
         if (j.contains("inventory"))
         {

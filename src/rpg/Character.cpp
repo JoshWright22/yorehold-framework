@@ -513,7 +513,22 @@ void Character::adoptBuild(const Character& built)
     proficiencies = built.proficiencies;
     proficiencyRanks = built.proficiencyRanks;
     dcAbility = built.dcAbility;
-    spells = built.spells;
+    // Prepared spells are the player's choice: keep the ones still on the new list, up to the
+    // new count, and start from the build's own if none are left (older sheets have none).
+    std::vector<std::string> keep;
+    for (const std::string& id : prepared)
+        if (static_cast<int>(keep.size()) < built.prepareLimit
+            && std::find(built.preparable.begin(), built.preparable.end(), id) != built.preparable.end()
+            && std::find(keep.begin(), keep.end(), id) == keep.end())
+            keep.push_back(id);
+    preparable = built.preparable;
+    prepareLimit = built.prepareLimit;
+    prepared = keep.empty() ? built.prepared : keep;
+    spells.clear();
+    for (const std::string& id : built.spells)
+        if (std::find(built.prepared.begin(), built.prepared.end(), id) == built.prepared.end())
+            spells.push_back(id);
+    spells.insert(spells.end(), prepared.begin(), prepared.end());
     for (const auto& [id, resource] : built.resources)
     {
         const auto live = resources.find(id);

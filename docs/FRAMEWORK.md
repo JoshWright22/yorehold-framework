@@ -280,6 +280,7 @@ strict like the option files (`levels[4].slots.3: ...`).
 | `feats` | The kinds of feat the player may pick at this level, one pick each. |
 | `skills` | How many skills the player may pick to train. |
 | `slots` | Spell slots by slot level, as totals; a row without them keeps the previous row's. They become the resources `slots-1`, `slots-2`... |
+| `spells` | For a `prepared` or `spontaneous` class, how many spells it prepares or keeps; a row without it keeps the previous row's. |
 
 `build` walks the character's levels in order; each one takes the next row of its own class, so
 any level can go into any class. With several casting classes each slot level gets the most any one
@@ -445,13 +446,25 @@ a ruleset's `spells/` folder, read by `Compendium::loadOptions` with the other p
 | `hands` | Hands the casting needs, 0 to 4 (default 1). |
 | `concentration` | Default false. The conditions and modifiers it leaves on creatures last only while the caster concentrates. |
 | `cost` | Actions, as a number. Left out, a spell costs one action per hand. |
+| `spends` | Resources it costs instead of a slot, `{"focus": 1}` (1 to 100 each). A plain list of names, one each, also loads. |
 | the rest | The action fields `id`, `name`, `description`, `order` (default 500 + level), `target`, `area`, `save`, `effects`, `log`. A spell needs at least one effect step and takes no `general`, `endsTurn`, `readies` or `requires`. |
 
 A class file lists its spells by spell level, `"spells": { "0": ["spark"], "1": ["flame-fan"] }`.
 `loadOptions` refuses a list naming a spell that doesn't exist or sits under the wrong level.
 `Compendium::build` puts on the sheet (`Character::spells`, saved with it and replaced by
-`adoptBuild`) every listed cantrip plus every listed spell of a level the sheet has slots for.
-Slots are the resources `slots-1`, `slots-2`... from the class level tables.
+`adoptBuild`) every listed cantrip, every listed spell that `spends` resources the sheet has, and
+the listed spells of a level the sheet has slots for, as the class's `casting` says:
+
+| `casting` | Levelled spells |
+|---|---|
+| `known` (default) | All of them. |
+| `prepared` | They go in `Character::preparable`; the first `spells` of them (the level row's count, `prepareLimit`) are `prepared` and in `spells`. `Character::prepare(ids)` swaps the choice: at least one, all from the list, no more than the limit. |
+| `spontaneous` | A fixed set of the row's `spells` count: the character's `"spells"` picks from its levels, then the list's first. |
+
+The prepared fields are saved with the sheet. `adoptBuild` keeps the prepared spells still on the
+new list, up to the new count, and takes the build's first ones when none are left, so older sheets
+load with the first spells prepared. Slots are the resources `slots-1`, `slots-2`... from the class
+level tables.
 
 `SpellRules` is how a ruleset casts, an optional JSON object with every field optional:
 
@@ -460,14 +473,16 @@ Slots are the resources `slots-1`, `slots-2`... from the class level tables.
 | `hands` | `free` (the default): the spell's hands must be empty (`Character::freeHands()`). `ignored`: hands only set the cost. |
 | `slotPrefix` | A slot of level N is the resource named this plus N. Default `slots-`. |
 | `upcast` | Default true: with no slot of its own level left, a spell spends the lowest higher one. |
+| `prepareAfter` | Rest ids after which a prepared caster may choose again. The game decides when that window closes. Default none. |
 | `concentration.onDamage` | `save` (the default): damage forces a save and failing it ends the spell. `breaks`: any damage ends it. `ignored`. |
 | `concentration.ability`, `minimumDc`, `damageShare` | The save's ability (default `con`) and DC: the larger of `minimumDc` (10) and `damageShare` (0.5) of the damage, rounded down. |
 | `concentration.endsWhenDown` | Default true: dropping to 0 HP ends it. |
 
 Unknown fields are refused with the field named; `check(rules)` verifies the save's ability.
 `slotFor(caster, spell, rules, wanted)` gives the slot level a casting would spend (0 for a
-cantrip, empty if none), `canCast` adds the hands check with a short reason, and `spendSlot` takes
-the slot. A step's `scale` by `slot` reads `EffectContext::slot`.
+cantrip or a spell that spends resources, empty if none), `canCast` adds the hands and resource
+checks with a short reason ("needs 1 focus"), `spendCasting` takes the slot or the resources and
+`spendSlot` takes just a slot. A step's `scale` by `slot` reads `EffectContext::slot`.
 
 `Concentration` is what one caster is holding in place: `begin(spell, result)` collects the
 conditions and modifiers an effect run left on creatures, `end(sheets)` takes them off again and
