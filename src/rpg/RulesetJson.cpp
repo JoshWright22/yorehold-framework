@@ -83,6 +83,8 @@ std::string Ruleset::toJson() const
     j["reviveAfterVictory"] = reviveAfterVictory;
     j["revivePrice"] = revivePrice;
     j["reviveHp"] = reviveHp;
+    j["companions"] = {{"limit", companions.limit}, {"partyLimit", companions.partyLimit},
+        {"approvalMin", companions.approvalMin}, {"approvalMax", companions.approvalMax}};
     j["defaultHitDie"] = defaultHitDie;
     j["hitDieAbility"] = hitDieAbility;
     j["hitDieByClass"] = J::object();
@@ -256,6 +258,15 @@ std::optional<Ruleset> Ruleset::fromJson(std::string_view json, std::string* err
         r.reviveHp = j.value("reviveHp", 0);
         if (r.revivePrice < 0 || r.revivePrice > 100000000 || r.reviveHp < 0 || r.reviveHp > 100000)
             throw std::invalid_argument("Invalid revival: a price and HP from 0");
+        const nlohmann::json companions = j.value("companions", nlohmann::json::object());
+        if (!companions.is_object()) throw std::invalid_argument("companions must be an object");
+        r.companions.limit = companions.value("limit", 0);
+        r.companions.partyLimit = companions.value("partyLimit", 0);
+        r.companions.approvalMin = companions.value("approvalMin", r.companions.approvalMin);
+        r.companions.approvalMax = companions.value("approvalMax", r.companions.approvalMax);
+        if (r.companions.limit < 0 || r.companions.limit > 100 || r.companions.partyLimit < 0 || r.companions.partyLimit > 100
+            || r.companions.approvalMin > r.companions.approvalMax)
+            throw std::invalid_argument("Invalid companions: limits from 0 and approvalMin at most approvalMax");
         r.defaultHitDie = j.value("defaultHitDie", r.defaultHitDie);
         r.hitDieAbility = j.value("hitDieAbility", r.hitDieAbility);
         const nlohmann::json dice = j.value("hitDieByClass", nlohmann::json::object());

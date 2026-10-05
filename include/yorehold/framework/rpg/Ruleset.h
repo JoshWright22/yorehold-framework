@@ -144,6 +144,15 @@ struct ScoreMethods
     std::map<int, int> pointCosts{{8, 0}, {9, 1}, {10, 2}, {11, 3}, {12, 4}, {13, 5}, {14, 7}, {15, 9}};
 };
 
+// NPCs who join the party (Companions). 0 for a limit = no limit.
+struct CompanionRules
+{
+    int limit = 0;       // companions in the party at once
+    int partyLimit = 0;  // everyone in the party, players' characters included
+    int approvalMin = -100;
+    int approvalMax = 100;
+};
+
 struct Ruleset
 {
     std::string id;
@@ -192,6 +201,7 @@ struct Ruleset
     // (0 = it can't be bought) and the HP they come back with (0 = full).
     int revivePrice = 0;
     int reviveHp = 0;
+    CompanionRules companions;
     int defaultHitDie = 8;
     std::vector<std::pair<std::string, int>> hitDieByClass; // {"Fighter", 10}
     std::string hitDieAbility = "con";                      // added per hit die (empty = none)
